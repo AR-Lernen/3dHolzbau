@@ -55,7 +55,7 @@
 <div id="cross"></div>
 <div id="ui">
   <div id="top">
-    <div id="status" class="panel"><b id="stTitle">Vorschau</b><small id="stText"></small></div>
+    <div id="status" class="panel"><b id="stTitle">Vorschau</b><small id="stText"></small><small id="diag" style="font-size:12px"></small></div>
     <button id="btnLay" class="sm">Ebenen</button>
   </div>
   <div id="msg" class="panel hide"></div>
@@ -97,7 +97,8 @@
       </div>
       <div id="arAdj" class="hide">
         <div class="row" style="margin-bottom:8px">
-          <button id="btnPlace" class="flex1">Modell hierhin setzen</button>
+          <button id="btnFront" class="flex1">Modell vor mich setzen</button>
+          <button id="btnPlace" class="flex1">Auf Fläche setzen</button>
           <button id="btnRealign" class="pri flex1">Exakt einpassen</button>
         </div>
         <div class="row" style="justify-content:space-between;align-items:center">
@@ -334,7 +335,7 @@ const YAX = new THREE.Vector3(0, 1, 0);
 const CEN = new THREE.Vector3(bcen.x, 0, bcen.z);          // Gebäudemitte auf EG-Niveau (Anker im Schnellstart)
 const align = { mode: 'free', a: null, b: null, adj: new THREE.Vector3(), yaw: 0, useScale: false, step: 0.01, info: '' };
 let stage = 'free';                                          // free | mA | mB | rA | rB | done
-let seq = [], seqIdx = 0, aimPt = null, needPlace = false;
+let lastDiag = 0, seq = [], seqIdx = 0, aimPt = null, needPlace = false;
 function applyAlignment() {
   if (!align.a) return;
   const A = align.mode === 'free' ? CEN.clone() : new THREE.Vector3().fromArray(ptA);
@@ -370,7 +371,7 @@ fixA.scale.setScalar(.5); fixB.scale.setScalar(.5);
 })();
 
 const TXT = {
-  free: ['Schnellstart 1:1', 'Das Modell steht im Maßstab 1:1 um dich herum. „Modell hierhin“ setzt es auf die anvisierte Fläche, mit den Pfeilen schiebst du es.'],
+  free: ['Schnellstart 1:1', 'Das Modell steht im Maßstab 1:1 um dich herum. „Vor mich setzen“ stellt es ein paar Meter vor dich, „Auf Fläche setzen“ auf den Ring (nur wenn ARCore eine Fläche erkennt).'],
   mA: ['Modellpunkt A', 'Fadenkreuz auf eine Ecke im Modell richten (grüner Punkt rastet ein), dann setzen.'],
   mB: ['Modellpunkt B', 'Zweite Ecke im Modell anvisieren, möglichst weit von A entfernt.'],
   rA: ['Punkt A am Bau', 'Fadenkreuz genau auf den echten Punkt A halten, dann setzen.'],
@@ -384,9 +385,9 @@ function arText() {
   } else { $('stTitle').textContent = TXT[stage][0]; $('stText').textContent = TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
   const adj = stage === 'free' || stage === 'done';
   $('arSet').classList.toggle('hide', adj); $('arAdj').classList.toggle('hide', !adj);
-  $('btnPlace').classList.toggle('hide', stage !== 'free'); $('lblScale').classList.toggle('hide', stage !== 'done');
+  $('btnPlace').classList.toggle('hide', stage !== 'free'); $('btnFront').classList.toggle('hide', stage !== 'free'); $('lblScale').classList.toggle('hide', stage !== 'done');
   $('btnRealign').textContent = stage === 'free' ? 'Exakt einpassen' : 'Neu einpassen';
-  document.body.classList.toggle('aiming', !adj);
+  document.body.classList.toggle('aiming', stage !== 'done');
   $('btnSet').disabled = (stage === 'mA' || stage === 'mB') && !aimPt;
   reticle.visible = (stage === 'rA' || stage === 'rB' || stage === 'free') && !!hitPose;
   aimMark.visible = (stage === 'mA' || stage === 'mB') && !!aimPt;
@@ -433,6 +434,10 @@ $('btnRealign').onclick = () => { if (stage === 'free' || stage === 'done') star
 $('btnPlace').onclick = () => {
   if (!hitPose) { flash('Noch keine Fläche erkannt.'); return; }
   align.a = new THREE.Vector3().setFromMatrixPosition(hitPose); align.adj.set(0, 0, 0); applyAlignment();
+};
+$('btnFront').onclick = () => {
+  const cam = renderer.xr.getCamera(), fw = new THREE.Vector3(); cam.getWorldDirection(fw); fw.y = 0; if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize();
+  const c = cam.position; align.a = new THREE.Vector3(c.x, 0, c.z).addScaledVector(fw, Math.max(bsize.x, bsize.z) * 0.8); align.adj.set(0, 0, 0); applyAlignment();
 };
 $('btnExit').onclick = () => xrSession && xrSession.end();
 $('chkScale').onchange = e => { align.useScale = e.target.checked; applyAlignment(); arText(); };
@@ -511,6 +516,10 @@ renderer.setAnimationLoop((t, frame) => {
       } else { hitPose = null; reticle.visible = false; }
     }
     updateAim();
+    if (t - lastDiag > 500) {
+      lastDiag = t; const c = renderer.xr.getCamera().position, mp = new THREE.Vector3(bcen.x, 0, bcen.z).applyMatrix4(model.matrixWorld);
+      $('diag').textContent = 'Fläche: ' + (hitPose ? 'erkannt' : 'KEINE (Handy langsam bewegen, gutes Licht)') + ' · Modell ' + (Math.hypot(mp.x - c.x, mp.z - c.z)).toFixed(1) + ' m entfernt';
+    }
   }
   renderer.render(scene, camera);
 });
