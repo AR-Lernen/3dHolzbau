@@ -39,6 +39,19 @@ const near = (a, b, eps = 1e-3) => Math.abs(a - b) < eps;
       return { dA: A.distanceTo(align.a), dir: B.clone().sub(A).setY(0).normalize().distanceTo(align.b.clone().sub(align.a).setY(0).normalize()), s: model.scale.x };
     });
     ok(m.dA < 1e-4 && m.dir < 1e-4 && m.s === 1, 'Zwei-Punkt-Ausrichtung: A liegt auf a, Richtung A→B stimmt, Maßstab 1,0');
+    // Ring muss aus jeder Richtung sichtbar sein (Trefferfläche vom Gerät kann beliebig orientiert sein)
+    const ring = await p.evaluate(() => {
+      for (const l of layers) l.mesh.visible = l.occ.visible = false; document.getElementById('pvPanel').style.display = 'none';
+      orb.t.set(0, 0, 0); orb.r = 0.5; orb.el = 0.9; orb.az = 0.3; applyOrbit();
+      const gl = renderer.getContext(), W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, buf = new Uint8Array(W * H * 4), res = {};
+      for (const [k, m] of [['oben', new THREE.Matrix4()], ['kopfüber', new THREE.Matrix4().makeRotationX(Math.PI)]]) {
+        reticle.matrix.copy(m); reticle.matrixWorld.copy(m); reticle.matrixWorldNeedsUpdate = true; reticle.visible = true;
+        renderer.render(scene, camera); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        let n = 0; for (let i = 0; i < buf.length; i += 4) if (buf[i] > 240 && buf[i + 1] > 240 && buf[i + 2] > 240) n++; res[k] = n;
+      }
+      reticle.visible = false; return res;
+    });
+    ok(ring['oben'] > 200 && ring['kopfüber'] > 200, 'Ring wird gezeichnet, auch bei umgekehrter Flächenorientierung ' + JSON.stringify(ring));
     await ctx.close();
   }
 

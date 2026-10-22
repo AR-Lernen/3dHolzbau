@@ -485,7 +485,7 @@ function getCam() { return inAR && !ovl ? renderer.xr.getCamera() : camera; }
 function refSpace() { return ovl ? xrRef : renderer.xr.getReferenceSpace(); }
 const align = { mode: 'free', a: null, b: null, adj: new THREE.Vector3(), yaw: 0, useScale: false, step: 0.01, info: '' };
 let stage = 'free';                                          // free | mA | mB | rA | rB | done
-let aimOn = false;                                           // Zielhilfe (Ring + Fadenkreuz) im freien Modus nur auf Wunsch
+let lastAimT = 0, aimOn = false;                                           // Zielhilfe (Ring + Fadenkreuz) im freien Modus nur auf Wunsch
 let lastDiag = 0, seq = [], seqIdx = 0, aimPt = null, needPlace = false;
 function applyAlignment() {
   if (!align.a) return;
@@ -510,9 +510,10 @@ function resetModelTransform() { model.position.set(0, 0, 0); model.rotation.set
 
 // ---------- AR ----------
 let xrOK = false, inAR = false, xrSession = null, hitSource = null, hitPose = null;
-const reticle = new THREE.Mesh(new THREE.RingGeometry(0.035, 0.05, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true }));
-reticle.matrixAutoUpdate = false; reticle.visible = false; reticle.renderOrder = 10; scene.add(reticle);
-const dot = new THREE.Mesh(new THREE.SphereGeometry(0.008, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffb347, depthTest: false })); dot.renderOrder = 11; reticle.add(dot);
+const reticle = new THREE.Mesh(new THREE.RingGeometry(0.05, 0.07, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, side: THREE.DoubleSide }));
+reticle.matrixAutoUpdate = false; reticle.frustumCulled = false; reticle.visible = false; reticle.renderOrder = 10; scene.add(reticle);
+const dot = new THREE.Mesh(new THREE.SphereGeometry(0.012, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffb347, depthTest: false })); dot.frustumCulled = false; dot.renderOrder = 11; reticle.add(dot);
+const disc = new THREE.Mesh(new THREE.CircleGeometry(0.05, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.28, side: THREE.DoubleSide })); disc.frustumCulled = false; disc.renderOrder = 9; reticle.add(disc);
 const aimMark = new THREE.Mesh(new THREE.SphereGeometry(0.03, 14, 10), new THREE.MeshBasicMaterial({ color: 0x4cd68a, depthTest: false })); aimMark.renderOrder = 12; aimMark.visible = false; scene.add(aimMark);
 const fixA = mkMarker('A', 0xffb347), fixB = mkMarker('B', 0x4cd68a); fixA.visible = fixB.visible = false; scene.add(fixA, fixB);
 fixA.scale.setScalar(.5); fixB.scale.setScalar(.5);
@@ -541,6 +542,8 @@ function arText() {
     $('stTitle').textContent = 'Punkt ' + (stage === 'rA' ? 'A' : 'B') + ' · ' + w.name;
     $('stText').innerHTML = c.label + ' – Außenecke am Boden (Wandfuß).<small>Von außen auf die ' + w.name + ' gesehen ist A die linke, B die rechte Ecke.</small>';
     $('btnSet').textContent = BTN[stage];
+  } else if (stage === 'free' && aimOn && !inTab) {
+    $('stTitle').textContent = 'Fläche anzielen'; $('stText').textContent = 'Weißen Ring auf den Boden oder Tisch richten, dann „Hier absetzen“.'; $('btnSet').textContent = '';
   } else { $('stTitle').textContent = inTab ? 'Tisch-Modus' : TXT[stage][0]; $('stText').textContent = inTab ? 'Modell steht vor dir (Kamerabild + Handylage, kein Positions-Tracking). Maßstab wählen, mit den Pfeilen verschieben, ↺/↻ drehen.' : TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
   const adj = stage === 'free' || stage === 'done';
   $('arSet').classList.toggle('hide', adj || stage === 'wall'); $('arAdj').classList.toggle('hide', !adj);
@@ -599,7 +602,8 @@ $('btnUndo').onclick = () => {
 };
 $('btnRealign').onclick = () => { if (stage === 'free' || stage === 'done') startFit(true); };
 $('btnPlace').onclick = () => {
-  if (!aimOn) { aimOn = true; arText(); flash('Ring auf die Fläche richten, dann „Hier absetzen“.'); return; }
+  if (!aimOn) { aimOn = true; lastAimT = performance.now(); arText(); return; }
+  if (performance.now() - lastAimT < 600) return;                // Doppeltipp nicht als „absetzen“ werten
   if (!hitPose) { flash('Noch keine Fläche erkannt – Handy langsam bewegen.'); return; }
   align.a = new THREE.Vector3().setFromMatrixPosition(hitPose); align.adj.set(0, 0, 0); applyAlignment();
   aimOn = false; arText(); flash('Modell auf die Fläche gesetzt.');
@@ -647,7 +651,7 @@ function ovlFrame(t, frame) {
     camera.matrix.fromArray(v.transform.matrix); camera.matrix.decompose(camera.position, camera.quaternion, camera.scale);
     camera.matrixWorld.copy(camera.matrix); camera.matrixWorldNeedsUpdate = true;
   }
-  arTick(t, frame);
+  try { arTick(t, frame); } catch (e) { errs.push(String(e.message).slice(0, 80)); }
   if (pose) renderer.render(scene, camera);
 }
 async function startAR(quick) {
@@ -691,7 +695,9 @@ function arTick(t, frame) {
     const res = frame.getHitTestResults(hitSource);
     if (res.length) {
       const pose = res[0].getPose(refSpace());
-      hitPose = new THREE.Matrix4().fromArray(pose.transform.matrix); reticle.matrix.copy(hitPose); reticle.matrixWorld.copy(hitPose); reticle.matrixWorldNeedsUpdate = true;
+      if (!pose) { hitPose = null; reticle.visible = false; return; }
+      const mm = pose.transform.matrix;                          // Spalte 4 = Position
+      hitPose = new THREE.Matrix4().makeTranslation(mm[12], mm[13], mm[14]); reticle.matrix.copy(hitPose); reticle.matrixWorld.copy(hitPose); reticle.matrixWorldNeedsUpdate = true;
       reticle.visible = stage === 'rA' || stage === 'rB' || (stage === 'free' && aimOn);
     } else { hitPose = null; reticle.visible = false; }
   }
@@ -702,7 +708,7 @@ function arTick(t, frame) {
     const v = new THREE.Vector3(mp.x - c.x, 0, mp.z - c.z), rt = new THREE.Vector3().crossVectors(fw, YAX);
     const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
     const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
-    $('diag').textContent = DEBUG ? 'v15' + (ovl ? ' Overlay' : ' XR') + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + ' · Draws ' + renderer.info.render.calls + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (stage === 'free' || stage === 'done' ? '' : '');
+    $('diag').textContent = DEBUG ? 'v16' + (ovl ? ' Overlay' : ' XR') + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + ' · Draws ' + renderer.info.render.calls + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
   }
 }
 // ---------- Tisch-Modus: Kamerabild + Gerätelage, ohne WebXR ----------
@@ -731,7 +737,7 @@ async function startTable() {
 function stopTable() {
   removeEventListener('deviceorientation', onOri); if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null; $('cam').srcObject = null;
   inTab = false; document.body.classList.remove('ar', 'tab', 'aiming'); bs = 1; resetModelTransform(); camera.fov = 55; camera.updateProjectionMatrix();
-  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 15'; refreshPoints();
+  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 16'; refreshPoints();
 }
 $('btnTable').onclick = startTable;
 $('btnQuick').onclick = () => startAR(true);
@@ -767,7 +773,7 @@ renderer.setAnimationLoop((t, frame) => {
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 15'; $('chkOvl').checked = store.get('ovl', true);
+$('diag').textContent = 'Version 16'; $('chkOvl').checked = store.get('ovl', true);
 </script>
 </body>
 </html>

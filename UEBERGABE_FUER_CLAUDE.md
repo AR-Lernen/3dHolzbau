@@ -126,7 +126,11 @@ angepasst werden (siehe 7).
 5. **Force-Push/Historie** nur nach ausdrücklicher Freigabe des Nutzers.
 6. **Dunkelheit** verschlechtert ARCore-Tracking (kein Ring, Drift). Für Tests Licht an; auf der Baustelle ruhig und langsam schwenken.
 7. **Größe:** Seite wird durch Texturen groß; `texture_max_px` senken (256) falls nötig. Mehr als ~100 Ebenen belasten ältere Handys (Zeichenaufrufe).
-8. Reihenfolge der Dateien im Repo: `index.html` im Wurzelverzeichnis (Pages), `tools/` daneben.
+8. **Zielring unsichtbar trotz „Fläche erkannt“:** Die vom Gerät gelieferte Orientierung der Trefferfläche ist unzuverlässig (kann „auf dem Kopf“
+   stehen → Ring wird bei einseitigem Material weggeschnitten). Deshalb nur die **Position** des Treffers verwenden, Ring waagerecht,
+   `DoubleSide`, `frustumCulled = false`. Wirkung nie nur am Zustand (`reticle.visible`) prüfen, sondern an gezeichneten Pixeln (steht in `run_tests.js`).
+   Außerdem: Jeder Frame im Overlay-Modus ist in `try/catch`, damit ein Fehler nicht das gesamte Zeichnen stoppt; Fehler erscheinen in der Statuszeile.
+9. Reihenfolge der Dateien im Repo: `index.html` im Wurzelverzeichnis (Pages), `tools/` daneben.
 
 ## 7. Wenn das neue Modell nicht ins Schema passt
 
