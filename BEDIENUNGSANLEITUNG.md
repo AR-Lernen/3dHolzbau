@@ -78,8 +78,8 @@ Auch zwei Finger drehen das Modell. Sicher funktioniert immer der Regler **Drehu
 **🔓 Lösen** gibt es wieder frei.
 Nach dem *Exakt einpassen* sind die Gesten gesperrt, damit das eingemessene Modell nicht verrutscht.
 
-**Menü einklappen:** Oben rechts **„Menü ▾“** blendet die Bedienelemente aus, damit nur das Modell zu sehen ist;
-**„Menü ▴“** holt sie zurück.
+**Menü einklappen:** **Kurz auf den freien Bildschirm tippen** blendet die Bedienelemente aus, nochmal tippen holt sie zurück
+(alternativ oben rechts **„Menü ▾ / ▴“**). Ist das Ebenen-Menü offen, schließt ein Tipp zuerst dieses. Ziehen bewegt weiterhin das Modell.
 
 ## 6. Hilfe bei Problemen
 
@@ -95,6 +95,8 @@ Nach dem *Exakt einpassen* sind die Gesten gesperrt, damit das eingemessene Mode
 | Statuszeile zeigt **Pose FEHLT** | Tracking hat noch keine Position: Handy ruhig halten, dann langsam schwenken; mehr Licht |
 | Statuszeile zeigt **Draws 0** oder **3D-Ansicht abgestürzt** | AR beenden, Seite neu laden (Link mit neuer `?v=`-Zahl) |
 | Fehlersuche | `?debug` an den Link: Testwürfel, Mittelmarke, Diagnosewerte. Screenshot der Statuszeile hilft bei der Fehlersuche |
+
+**Weitergeben:** In der Vorschau **„🔗 Link teilen“** – öffnet das Teilen-Menü des Handys (oder kopiert den Link).
 
 ## 7. Kurzreferenz
 

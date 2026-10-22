@@ -39,6 +39,10 @@ const near = (a, b, eps = 1e-3) => Math.abs(a - b) < eps;
       return { dA: A.distanceTo(align.a), dir: B.clone().sub(A).setY(0).normalize().distanceTo(align.b.clone().sub(align.a).setY(0).normalize()), s: model.scale.x };
     });
     ok(m.dA < 1e-4 && m.dir < 1e-4 && m.s === 1, 'Zwei-Punkt-Ausrichtung: A liegt auf a, Richtung A→B stimmt, Maßstab 1,0');
+    await p.evaluate(() => document.getElementById('layPanel').classList.remove('hide'));
+    const free = await p.evaluate(() => { for (let y = 60; y < 800; y += 10) for (const x of [30, 200, 370]) if (document.elementFromPoint(x, y) && document.elementFromPoint(x, y).id === 'gl') return [x, y]; return null; });
+    if (free) { await p.mouse.click(free[0], free[1]); await p.waitForTimeout(200); }
+    ok(await p.evaluate(() => document.getElementById('layPanel').classList.contains('hide')), 'Vorschau: Tipp ins Bild schließt das Ebenen-Menü ' + JSON.stringify(free));
     // Ring muss aus jeder Richtung sichtbar sein (Trefferfläche vom Gerät kann beliebig orientiert sein)
     const ring = await p.evaluate(() => {
       for (const l of layers) l.mesh.visible = l.occ.visible = false; document.getElementById('pvPanel').style.display = 'none';
@@ -157,6 +161,22 @@ const near = (a, b, eps = 1e-3) => Math.abs(a - b) < eps;
     ok(Math.abs(Math.abs(more.twoFinger) - Math.PI / 2) < 1e-3, 'Zweiter Finger aus der Eingabeliste: 2-Finger-Drehung um 90° erkannt');
     ok(Math.abs(more.slider - 45) < 1e-6, 'Dreh-Regler auf 45° → Modell 45° gedreht');
     ok(more.lockedMoved < 1e-9 && more.hidden && more.unlocked, 'Fixieren: Gesten, Pfeile und Drehen gesperrt, Stellelemente ausgeblendet; Lösen gibt frei');
+    // Kurzer Tipp auf den freien Bildschirm blendet das Menü aus/ein; Ziehen nicht; Ebenen-Menü schließt zuerst
+    const tap = await p.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms)), off = () => document.body.classList.contains('menuOff');
+      const el = document.getElementById('touch'), ev = (type, x, y) => el.dispatchEvent(new PointerEvent(type, { pointerId: 7, clientX: x, clientY: y, bubbles: true }));
+      setMenu(false); await wait(500);
+      ev('pointerdown', 200, 300); ev('pointerup', 200, 300); const r1 = off(); await wait(500);
+      ev('pointerdown', 200, 300); ev('pointerup', 200, 300); const r2 = off(); await wait(500);
+      // WebXR-Weg: eigene Sitzungsattrappe
+      const h = {}, fake = { addEventListener: (k, f) => (h[k] = f) }; bindXrGestures(fake); const src = { targetRayMode: 'screen' };
+      h.selectstart({ inputSource: src }); h.selectend({ inputSource: src }); const r3 = off(); await wait(500);
+      h.selectstart({ inputSource: src }); align.adj.x += 0.05; h.selectend({ inputSource: src }); const r4 = off(); await wait(500);   // = Ziehen
+      document.getElementById('layPanel').classList.remove('hide'); h.selectstart({ inputSource: src }); h.selectend({ inputSource: src });
+      const r5 = document.getElementById('layPanel').classList.contains('hide') && off() === r4;
+      bindXrGestures(xrSession); setMenu(false); return { r1, r2, r3, r4, r5 };
+    });
+    ok(tap.r1 && !tap.r2 && tap.r3 && tap.r4 === tap.r3 && tap.r5, 'Tipp ins Freie: Menü aus → ein (Touch und WebXR), Ziehen schaltet nicht, offenes Ebenen-Menü wird zuerst geschlossen ' + JSON.stringify(tap));
     // Mehrfach starten/beenden: genau EIN Hilfskontext, Zeichenkontext bleibt intakt, Preview zeichnet wieder
     const multi = [];
     for (let i = 0; i < 4; i++) {

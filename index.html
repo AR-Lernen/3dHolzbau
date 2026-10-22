@@ -44,6 +44,7 @@
   .sl { display:grid; grid-template-columns:78px 1fr 44px; gap:8px; align-items:center; font-size:13px; color:var(--mut); }
   .sl span:last-child { color:var(--fg); text-align:right; }
   .hide { display:none !important; }
+  #layPanel:not(.hide) ~ #pvPanel { display:none; }                 /* Ebenen offen: Startfeld weg, Bild bleibt frei */
   body.menuOff #bottom, body.menuOff #layPanel, body.menuOff #stText, body.menuOff #planMini { display:none !important; }
   body.ar .previewOnly { display:none !important; }
   body:not(.ar) .arOnly { display:none !important; }
@@ -110,6 +111,7 @@
       <div class="row" style="margin-top:8px">
         <button id="btnAR" class="flex1" disabled>Mit Fixpunkten starten</button>
         <button id="btnClear" class="sm">Punkte löschen</button>
+        <button id="btnShare" class="sm">🔗 Link teilen</button>
       </div>
       <small id="pvHint" style="color:var(--mut);display:block;margin-top:6px"></small>
     </div>
@@ -314,6 +316,8 @@ $('slOp').value = store.get('opv12', 60); $('slOp').oninput = applyOpacity;
 $('slCut').oninput = applyCut;
 $('chkEdges').onchange = () => { applyVis(); };
 $('chkXray').onchange = () => { for (const m of lineMats) { m.depthTest = !$('chkXray').checked; m.needsUpdate = true; } applyVis(); };
+const layObs = new MutationObserver(() => { $('btnLay').textContent = $('layPanel').classList.contains('hide') ? 'Ebenen' : 'Ebenen ✕'; });
+layObs.observe($('layPanel'), { attributes: true, attributeFilter: ['class'] });
 $('btnLay').onclick = () => $('layPanel').classList.toggle('hide');
 syncUI(); applyClip(); applyVis(); applyOpacity(); applyCut();
 
@@ -460,7 +464,7 @@ function panOrbit(dx, dy) {
 }
 const endPtr = e => {
   if (!ptrs.has(e.pointerId)) return;
-  if (tapStart && ptrs.size === 1 && performance.now() - tapStart.t < 500 && picking) pickAt(e.clientX, e.clientY);
+  if (tapStart && ptrs.size === 1 && performance.now() - tapStart.t < 500) { if (picking) pickAt(e.clientX, e.clientY); else $('layPanel').classList.add('hide'); }
   ptrs.delete(e.pointerId); tapStart = null; lastPinch = 0; lastMid = null;
 };
 cvs.addEventListener('pointerup', endPtr); cvs.addEventListener('pointercancel', endPtr);
@@ -536,7 +540,7 @@ fixA.scale.setScalar(.5); fixB.scale.setScalar(.5);
 })();
 
 const TXT = {
-  free: ['Schnellstart', 'Mit dem Finger auf dem Bild ziehen: je nach Umschalter unten verschieben oder drehen. „Auf Fläche setzen“ stellt das Modell auf den Ring.'],
+  free: ['Schnellstart', 'Auf dem Bild ziehen: verschieben oder drehen (Umschalter unten). Kurz tippen blendet das Menü aus und wieder ein.'],
   mA: ['Modellpunkt A', 'Fadenkreuz auf eine Ecke im Modell richten (grüner Punkt rastet ein), dann setzen.'],
   mB: ['Modellpunkt B', 'Zweite Ecke im Modell anvisieren, möglichst weit von A entfernt.'],
   rA: ['Punkt A am Bau', 'Fadenkreuz genau auf den echten Punkt A halten, dann setzen.'],
@@ -739,7 +743,7 @@ function arTick(t, frame) {
     const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
     const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
     const gl3 = renderer.getContext(), tech = (ovl ? 'Overlay' : 'XR') + ' · Pose ' + (ovl ? (ovlStat.poses ? 'ok' : 'FEHLT') : 'n/a') + ' · Draws ' + renderer.info.render.calls + ' · Canvas ' + gl3.drawingBufferWidth + '×' + gl3.drawingBufferHeight + (gl3.isContextLost() ? ' · GL VERLOREN' : '');
-    $('diag').textContent = DEBUG ? 'v23 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
+    $('diag').textContent = DEBUG ? 'v24 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
   }
 }
 // ---------- Gesten: 1 Finger verschieben, 2 Finger drehen (nur freier Modus) ----------
@@ -783,10 +787,19 @@ function xrGestureTick(frame, sources = xrSession ? xrSession.inputSources : [])
   }
   xrG = applyGesture(pts, xrG);
 }
+// Kurzer Tipp auf den freien Bildschirm: offenes Ebenen-Menü schließen, sonst Bedienfeld aus-/einblenden
+let tap0 = null, domTap = null, lastTap = 0;
+const tapSnap = () => ({ t: performance.now(), adj: align.adj.clone(), yaw: align.yaw });
+const isTap = s => performance.now() - s.t < 350 && align.adj.distanceTo(s.adj) < 0.002 && Math.abs(align.yaw - s.yaw) < 0.005;
+function freeTap() {
+  const now = performance.now(); if (now - lastTap < 450) return; lastTap = now;     // WebXR und Touch melden denselben Tipp
+  if (!$('layPanel').classList.contains('hide')) { $('layPanel').classList.add('hide'); return; }
+  if (inAR && (stage === 'free' || stage === 'done') && !aimOn) setMenu(!document.body.classList.contains('menuOff'));
+}
 function bindXrGestures(session) {
   xrTouch.clear(); xrG = null; xrGest = false;
-  session.addEventListener('selectstart', e => { if (e.inputSource.targetRayMode === 'screen') { xrTouch.add(e.inputSource); xrGest = true; xrG = null; } });
-  session.addEventListener('selectend', e => { xrTouch.delete(e.inputSource); xrG = null; });
+  session.addEventListener('selectstart', e => { if (e.inputSource.targetRayMode === 'screen') { xrTouch.add(e.inputSource); xrGest = true; xrG = null; tap0 = tapSnap(); } });
+  session.addEventListener('selectend', e => { xrTouch.delete(e.inputSource); xrG = null; if (tap0 && isTap(tap0)) freeTap(); tap0 = null; });
 }
 // Berührungen auf Bedienelementen sollen keine AR-Eingabe auslösen
 $('ui').addEventListener('beforexrselect', e => { if (e.target !== $('touch')) e.preventDefault(); });
@@ -802,6 +815,7 @@ function domPoints() {
 }
 const touchEl = $('touch');
 touchEl.addEventListener('pointerdown', e => {
+  domTap = { x: e.clientX, y: e.clientY, t: performance.now() };
   if (!gestOK() || xrGest) return; try { touchEl.setPointerCapture(e.pointerId); } catch (_) {}
   tp.set(e.pointerId, { x: e.clientX, y: e.clientY }); const pts = domPoints(); g0 = pts ? gestureOf(pts) : null;
 });
@@ -810,10 +824,16 @@ touchEl.addEventListener('pointermove', e => {
   tp.set(e.pointerId, { x: e.clientX, y: e.clientY });
   const pts = domPoints(); g0 = pts ? applyGesture(pts, g0) : null;
 });
-const endTouch = e => { tp.delete(e.pointerId); const pts = tp.size && gestOK() ? domPoints() : null; g0 = pts ? gestureOf(pts) : null; };
+const endTouch = e => { if (e.type === 'pointerup' && domTap && Math.hypot(e.clientX - domTap.x, e.clientY - domTap.y) < 12 && performance.now() - domTap.t < 350) freeTap(); domTap = null;
+  tp.delete(e.pointerId); const pts = tp.size && gestOK() ? domPoints() : null; g0 = pts ? gestureOf(pts) : null; };
 touchEl.addEventListener('pointerup', endTouch); touchEl.addEventListener('pointercancel', endTouch);
 
 $('gestRow').addEventListener('click', e => { const m = e.target.closest && e.target.closest('[data-gm]'); if (!m) return; gestMode = m.dataset.gm; store.set('gm', gestMode); xrG = null; g0 = null; arText(); });
+$('btnShare').onclick = async () => {
+  const url = location.origin + location.pathname;
+  try { if (navigator.share) { await navigator.share({ title: document.title, url }); return; } await navigator.clipboard.writeText(url); flash('Link kopiert: ' + url); }
+  catch (e) { if (e && e.name !== 'AbortError') flash(url); }
+};
 $('btnQuick').onclick = () => startAR(true);
 $('btnARTable').onclick = () => startAR(true, true);
 function setMenu(off) { document.body.classList.toggle('menuOff', off); $('btnMenu').textContent = off ? 'Menü ▴' : 'Menü ▾'; }
@@ -849,7 +869,7 @@ renderer.setAnimationLoop((t, frame) => {
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 23'; $('chkOvl').checked = store.get('ovl', true);
+$('diag').textContent = 'Version 24'; $('chkOvl').checked = store.get('ovl', true);
 </script>
 </body>
 </html>
