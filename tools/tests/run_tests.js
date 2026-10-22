@@ -99,6 +99,17 @@ const near = (a, b, eps = 1e-3) => Math.abs(a - b) < eps;
     });
     ok(fit.s1 === 'wall' && fit.s2 === 'rA' && fit.s3 === 'done', 'Einpassen: Wandwahl → A → B → eingepasst');
     ok(/Δ 0\.[0-9] cm|Δ -0\.[0-9] cm/.test(fit.info), 'Abweichung nach Einpassung klein: ' + fit.info);
+    // Menü einklappen
+    const menu = await p.evaluate(() => { document.getElementById('btnMenu').click(); const off = getComputedStyle(document.getElementById('bottom')).display === 'none';
+      document.getElementById('btnMenu').click(); const on = getComputedStyle(document.getElementById('bottom')).display !== 'none'; return { off, on }; });
+    ok(menu.off && menu.on, 'Menü lässt sich ein- und ausklappen');
+    // AR-Tisch 1:50: Modell erst nach dem Absetzen sichtbar, dann fest an der Trefferstelle
+    await p.evaluate(() => xrSession && xrSession.end()); await p.waitForTimeout(500);
+    await p.evaluate(() => document.getElementById('btnARTable').click()); await p.waitForTimeout(1500);
+    const tb1 = await p.evaluate(() => ({ vis: model.visible, aim: aimOn, s: model.scale.x }));
+    await p.evaluate(() => document.getElementById('btnPlace').click()); await p.waitForTimeout(400);
+    const tb2 = await p.evaluate(() => ({ vis: model.visible, c: new THREE.Vector3(bcen.x, 0, bcen.z).applyMatrix4(model.matrixWorld).toArray(), h: hitPose && new THREE.Vector3().setFromMatrixPosition(hitPose).toArray() }));
+    ok(!tb1.vis && tb1.aim && near(tb1.s, 0.02) && tb2.vis && tb2.h && tb2.c.every((v, i) => near(v, tb2.h[i])), 'AR-Tisch 1:50: zielen → absetzen → Modell steht an der Trefferstelle');
     // Mehrfach starten/beenden: genau EIN Hilfskontext, Zeichenkontext bleibt intakt, Preview zeichnet wieder
     const multi = [];
     for (let i = 0; i < 4; i++) {

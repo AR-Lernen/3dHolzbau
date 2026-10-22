@@ -45,6 +45,7 @@
   .sl { display:grid; grid-template-columns:78px 1fr 44px; gap:8px; align-items:center; font-size:13px; color:var(--mut); }
   .sl span:last-child { color:var(--fg); text-align:right; }
   .hide { display:none !important; }
+  body.menuOff #bottom, body.menuOff #layPanel, body.menuOff #stText, body.menuOff #planMini { display:none !important; }
   body.ar .previewOnly { display:none !important; }
   body:not(.ar) .arOnly { display:none !important; }
   #msg { position:absolute; left:50%; top:45%; transform:translate(-50%,-50%); text-align:center; max-width:80%; pointer-events:none; }
@@ -67,7 +68,7 @@
   <div id="cross"></div>
   <div id="top">
     <div id="status" class="panel"><div id="planMini" class="hide" style="float:right;margin:0 0 4px 8px"></div><b id="stTitle">Vorschau</b><small id="stText"></small><small id="diag" style="font-size:12px"></small></div>
-    <button id="btnLay" class="sm">Ebenen</button>
+    <div style="display:flex;flex-direction:column;gap:6px"><button id="btnLay" class="sm">Ebenen</button><button id="btnMenu" class="sm arOnly">Menü ▾</button></div>
   </div>
   <div id="msg" class="panel hide"></div>
 
@@ -95,7 +96,8 @@
     <div id="pvPanel" class="panel previewOnly">
       <button id="btnQuick" class="pri" style="width:100%;margin-bottom:8px" disabled>Schnellstart: Modell 1:1 in AR ansehen</button>
       <label class="chk" style="margin-bottom:8px"><input id="chkOvl" type="checkbox" checked> Kompatibilitätsmodus: Modell im Overlay zeichnen</label>
-      <button id="btnTable" style="width:100%;margin-bottom:10px">Tisch-Modus 1:50 (Kamera + Lage, ohne AR-Tracking)</button>
+      <button id="btnARTable" style="width:100%;margin-bottom:8px" disabled>AR-Tisch 1:50 – fest auf dem Tisch</button>
+      <button id="btnTable" style="width:100%;margin-bottom:10px">Tisch-Modus ohne AR (nur Handylage, nicht fixiert)</button>
       <div class="hd" style="margin-top:0">Referenzwand am Altbau (empfohlen)</div>
       <div class="row" id="pvWalls"></div>
       <div id="planPv" style="display:flex;justify-content:center;margin:6px 0"></div>
@@ -399,7 +401,7 @@ function refreshPoints() {
   $('pickB').textContent = ptB ? 'B ✓ neu wählen' : 'B wählen';
   $('pickB').style.display = $('chk2').checked ? '' : 'none';
   const ready = ptA && (!$('chk2').checked || ptB);
-  $('btnAR').disabled = !ready || !xrOK; $('btnQuick').disabled = !xrOK;
+  $('btnAR').disabled = !ready || !xrOK; $('btnQuick').disabled = !xrOK; $('btnARTable').disabled = !xrOK;
   $('pvHint').textContent = !xrOK ? 'WebXR/AR ist hier nicht verfügbar (Android-Chrome über HTTPS nötig).'
     : picking ? 'Tippe auf eine Ecke im Modell (rastet am nächsten Eckpunkt ein).'
     : ready ? '' : 'Optional: Punkte vorab wählen, die du auf der Baustelle sicher findest (Gebäudeecken). Oder Schnellstart und in AR einpassen.';
@@ -545,7 +547,7 @@ function arText() {
     $('stText').innerHTML = c.label + ' – Außenecke am Boden (Wandfuß).<small>Von außen auf die ' + w.name + ' gesehen ist A die linke, B die rechte Ecke.</small>';
     $('btnSet').textContent = BTN[stage];
   } else if (stage === 'free' && aimOn && !inTab) {
-    $('stTitle').textContent = 'Fläche anzielen'; $('stText').textContent = 'Weißen Ring auf den Boden oder Tisch richten, dann „Hier absetzen“.'; $('btnSet').textContent = '';
+    $('stTitle').textContent = tablePending ? 'AR-Tisch 1:50' : 'Fläche anzielen'; $('stText').textContent = (tablePending ? 'Handy langsam über den Tisch bewegen, bis der weiße Ring erscheint. ' : 'Weißen Ring auf den Boden oder Tisch richten. ') + 'Dann „Hier absetzen“ – das Modell bleibt dort stehen.'; $('btnSet').textContent = '';
   } else { $('stTitle').textContent = inTab ? 'Tisch-Modus' : stage === 'free' ? 'Schnellstart · Maßstab 1:' + Math.round(1 / bs) : TXT[stage][0]; $('stText').textContent = inTab ? 'Modell steht vor dir (Kamerabild + Handylage, kein Positions-Tracking). Maßstab wählen, mit den Pfeilen verschieben, ↺/↻ drehen.' : TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
   const adj = stage === 'free' || stage === 'done';
   $('arSet').classList.toggle('hide', adj || stage === 'wall'); $('arAdj').classList.toggle('hide', !adj);
@@ -608,12 +610,14 @@ $('btnPlace').onclick = () => {
   if (performance.now() - lastAimT < 600) return;                // Doppeltipp nicht als „absetzen“ werten
   if (!hitPose) { flash('Noch keine Fläche erkannt – Handy langsam bewegen.'); return; }
   align.a = new THREE.Vector3().setFromMatrixPosition(hitPose); align.adj.set(0, 0, 0); applyAlignment();
+  if (tablePending) { tablePending = false; model.visible = true; }
   aimOn = false; arText(); flash('Modell auf die Fläche gesetzt.');
 };
 function placeFront() {
   const cam = getCam(), fw = new THREE.Vector3(), c = new THREE.Vector3(); cam.getWorldDirection(fw); cam.getWorldPosition(c); fw.y = 0; if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize();
   const d = bs < 1 ? 0.7 : Math.max(bsize.x, bsize.z) * 0.8, y = bs < 1 ? c.y - 0.6 : 0;      // kleine Modelle: etwa auf Tischhöhe
   align.a = new THREE.Vector3(c.x, y, c.z).addScaledVector(fw, d); align.adj.set(0, 0, 0); applyAlignment();
+  if (tablePending) { tablePending = false; aimOn = false; model.visible = true; arText(); }
   flash(bs < 1 ? 'Modell steht ca. 70 cm vor dir.' : 'Modell gesetzt – ca. ' + d.toFixed(0) + ' m vor dir.');
 }
 $('btnFront').onclick = placeFront;
@@ -658,7 +662,8 @@ function ovlFrame(t, frame) {
   try { arTick(t, frame); } catch (e) { errs.push(String(e.message).slice(0, 80)); }
   if (ovlStat.hadPose) renderer.render(scene, camera);
 }
-async function startAR(quick) {
+let tablePending = false;
+async function startAR(quick, table) {
   if (xrSession) return;
   ovl = $('chkOvl').checked; store.set('ovl', ovl);
   try {
@@ -682,12 +687,14 @@ async function startAR(quick) {
   inAR = true; document.body.classList.add('ar'); scene.background = null;
   bs = 1; resetModelTransform(); align.mode = 'free'; align.b = null; align.adj.set(0, 0, 0); align.yaw = 0; align.a = new THREE.Vector3();
   model.visible = true; markers.visible = true; needPlace = true;     // Position folgt im ersten Frame (Standort des Nutzers)
+  setMenu(false); tablePending = !!table;
+  if (table) { bs = 0.02; model.visible = false; aimOn = true; lastAimT = performance.now(); }
   if (quick) { stage = 'free'; arText(); } else { align.mode = 'fix'; startFit(false); }
   if (ovl) { resize(); xrSession.requestAnimationFrame(ovlFrame); }
   xrSession.addEventListener('end', () => {
     inAR = false; xrSession = null; hitSource = null; hitPose = null; reticle.visible = aimMark.visible = false; fixA.visible = fixB.visible = false;
     if (ovl) { document.body.insertBefore($('gl'), $('ui')); camera.matrixAutoUpdate = true; renderer.xr.enabled = true; renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); ovl = false; resize(); }
-    document.body.classList.remove('ar', 'aiming'); model.visible = true; markers.visible = true; resetModelTransform();
+    document.body.classList.remove('ar', 'aiming', 'menuOff'); tablePending = false; model.visible = true; markers.visible = true; resetModelTransform();
     ptA = store.get('A', null); ptB = store.get('B', null); refreshPoints();
     $('stTitle').textContent = 'Vorschau'; $('stText').textContent = '';
   });
@@ -715,7 +722,7 @@ function arTick(t, frame) {
     const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
     const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
     const gl3 = renderer.getContext(), tech = (ovl ? 'Overlay' : 'XR') + ' · Pose ' + (ovl ? (ovlStat.poses ? 'ok' : 'FEHLT') : 'n/a') + ' · Draws ' + renderer.info.render.calls + ' · Canvas ' + gl3.drawingBufferWidth + '×' + gl3.drawingBufferHeight + (gl3.isContextLost() ? ' · GL VERLOREN' : '');
-    $('diag').textContent = DEBUG ? 'v18 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + ' · ' + tech + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
+    $('diag').textContent = DEBUG ? 'v19 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
   }
 }
 // ---------- Tisch-Modus: Kamerabild + Gerätelage, ohne WebXR ----------
@@ -744,10 +751,13 @@ async function startTable() {
 function stopTable() {
   removeEventListener('deviceorientation', onOri); if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null; $('cam').srcObject = null;
   inTab = false; document.body.classList.remove('ar', 'tab', 'aiming'); bs = 1; resetModelTransform(); camera.fov = 55; camera.updateProjectionMatrix();
-  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 18'; refreshPoints();
+  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 19'; refreshPoints();
 }
 $('btnTable').onclick = startTable;
 $('btnQuick').onclick = () => startAR(true);
+$('btnARTable').onclick = () => startAR(true, true);
+function setMenu(off) { document.body.classList.toggle('menuOff', off); $('btnMenu').textContent = off ? 'Menü ▴' : 'Menü ▾'; }
+$('btnMenu').onclick = () => setMenu(!document.body.classList.contains('menuOff'));
 $('btnAR').onclick = () => startAR(false);
 
 function updateAim() {
@@ -780,7 +790,7 @@ renderer.setAnimationLoop((t, frame) => {
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 18'; $('chkOvl').checked = store.get('ovl', true);
+$('diag').textContent = 'Version 19'; $('chkOvl').checked = store.get('ovl', true);
 </script>
 </body>
 </html>

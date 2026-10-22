@@ -64,9 +64,18 @@ Der Holzbau wird am Bestand ausgerichtet. Dazu misst du zwei Außenecken des Alt
 **Eigene Punkte:** Statt einer Referenzwand kannst du *„Eigene Punkte im Modell wählen“*. Dann zielst du erst auf eine Modellecke, dann auf die echte.
 **Vorab am Schreibtisch:** In der Vorschau Referenzwand oder Punkte A/B wählen und danach **„Mit Fixpunkten starten“**; vor Ort setzt du nur noch die echten Punkte.
 
-## 5. Tisch-Modus (ohne AR-Tracking)
+## 5. AR-Tisch 1:50 (fest auf dem Tisch)
 
-Button **„Tisch-Modus 1:50“**: Kamerabild plus Handylage, das Modell steht etwa 70 cm vor dir. Beim Neigen/Drehen schaust du um dich herum,
+Button **„AR-Tisch 1:50 – fest auf dem Tisch“**: Das Handy langsam über den Tisch bewegen, bis der weiße Ring erscheint,
+dann **„Hier absetzen“**. Das Modell steht danach fest auf dem Tisch – du kannst um den Tisch herumgehen.
+Mit *1:25* wird es größer, mit den Pfeilen und **↺ ↻** verschiebst und drehst du es.
+
+**Menü einklappen:** Oben rechts **„Menü ▾“** blendet die Bedienelemente aus, damit nur das Modell zu sehen ist;
+**„Menü ▴“** holt sie zurück.
+
+## 5b. Tisch-Modus ohne AR (nicht fixiert)
+
+Button **„Tisch-Modus ohne AR“**: nur für Geräte ohne funktionierendes AR. Kamerabild plus Handylage, das Modell steht etwa 70 cm vor dir. Beim Neigen/Drehen schaust du um dich herum,
 **Gehen** verändert die Ansicht nicht (keine Positionserkennung). Für schnelle Präsentationen geeignet, nicht zum Ausrichten.
 
 ## 6. Hilfe bei Problemen
