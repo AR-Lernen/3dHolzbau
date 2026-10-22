@@ -70,8 +70,9 @@ Button **„AR-Tisch 1:50 – fest auf dem Tisch“**: Das Handy langsam über d
 dann **„Hier absetzen“**. Das Modell steht danach fest auf dem Tisch – du kannst um den Tisch herumgehen.
 Mit *1:25* wird es größer.
 
-**Gesten** (im Schnellstart und beim AR-Tisch): **1 Finger** auf dem Bild verschiebt das Modell auf der Fläche,
-**2 Finger** drehen es um seine Mitte (Finger gegeneinander verdrehen). Für kleine Korrekturen gibt es weiterhin Pfeile und **↺ ↻**.
+**Gesten** (im Schnellstart und beim AR-Tisch): Mit dem Umschalter **Finger: ✋ Verschieben | ⟳ Drehen** wählst du, was ein Finger tut.
+*Verschieben*: Finger auf dem Bild ziehen, das Modell folgt. *Drehen*: Finger um das Modell herumführen, es dreht sich mit.
+Auf Geräten, die zwei Finger an AR weitergeben, dreht auch die Zwei-Finger-Geste. Für kleine Korrekturen gibt es weiterhin Pfeile und **↺ ↻**.
 Nach dem *Exakt einpassen* sind die Gesten gesperrt, damit das eingemessene Modell nicht verrutscht.
 
 **Menü einklappen:** Oben rechts **„Menü ▾“** blendet die Bedienelemente aus, damit nur das Modell zu sehen ist;

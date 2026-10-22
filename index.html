@@ -129,6 +129,7 @@
       </div>
       <div id="arAdj" class="hide">
         <div class="row" id="scaleRow" style="margin-bottom:8px"><span style="color:var(--mut)">Maßstab</span><button class="sm" data-sc="1">1:1</button><button class="sm" data-sc="0.04">1:25</button><button class="sm" data-sc="0.02">1:50</button><button class="sm" id="scM">−5 %</button><button class="sm" id="scP">+5 %</button></div>
+        <div class="row" id="gestRow" style="margin-bottom:8px"><span style="color:var(--mut)">Finger</span><button class="sm flex1" data-gm="move">✋ Verschieben</button><button class="sm flex1" data-gm="rot">⟳ Drehen</button></div>
         <div class="row" style="margin-bottom:8px">
           <button id="btnFront" class="flex1">Modell vor mich setzen</button>
           <button id="btnPlace" class="flex1">Auf Fläche setzen</button>
@@ -533,7 +534,7 @@ fixA.scale.setScalar(.5); fixB.scale.setScalar(.5);
 })();
 
 const TXT = {
-  free: ['Schnellstart', '1 Finger verschiebt das Modell, 2 Finger drehen es. „Vor mich setzen“ stellt es vor dich, „Auf Fläche setzen“ auf den Ring.'],
+  free: ['Schnellstart', 'Mit dem Finger auf dem Bild ziehen: je nach Umschalter unten verschieben oder drehen. „Auf Fläche setzen“ stellt das Modell auf den Ring.'],
   mA: ['Modellpunkt A', 'Fadenkreuz auf eine Ecke im Modell richten (grüner Punkt rastet ein), dann setzen.'],
   mB: ['Modellpunkt B', 'Zweite Ecke im Modell anvisieren, möglichst weit von A entfernt.'],
   rA: ['Punkt A am Bau', 'Fadenkreuz genau auf den echten Punkt A halten, dann setzen.'],
@@ -558,7 +559,8 @@ function arText() {
   $('arSet').classList.toggle('hide', adj || stage === 'wall'); $('arAdj').classList.toggle('hide', !adj);
   $('wallPanel').classList.toggle('hide', stage !== 'wall'); $('arPanel').classList.toggle('hide', stage === 'wall');
   $('planMini').classList.toggle('hide', !(refWall && (stage === 'rA' || stage === 'rB'))); if (refWall && (stage === 'rA' || stage === 'rB')) renderPlans();
-  $('btnPlace').classList.toggle('hide', stage !== 'free'); $('btnFront').classList.toggle('hide', stage !== 'free'); $('scaleRow').classList.toggle('hide', stage !== 'free'); 
+  $('btnPlace').classList.toggle('hide', stage !== 'free'); $('btnFront').classList.toggle('hide', stage !== 'free'); $('scaleRow').classList.toggle('hide', stage !== 'free'); $('gestRow').classList.toggle('hide', stage !== 'free');
+  for (const b of $('gestRow').querySelectorAll('button')) b.classList.toggle('on', b.dataset.gm === gestMode); 
   for (const b of $('scaleRow').querySelectorAll('button')) b.classList.toggle('on', Math.abs(+b.dataset.sc - bs) < 1e-6); $('lblScale').classList.toggle('hide', stage !== 'done');
   $('btnRealign').textContent = stage === 'free' ? 'Exakt einpassen' : 'Neu einpassen';
   const showAim = (stage !== 'free' && stage !== 'done' && stage !== 'wall') || aimOn;
@@ -729,7 +731,7 @@ function arTick(t, frame) {
     const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
     const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
     const gl3 = renderer.getContext(), tech = (ovl ? 'Overlay' : 'XR') + ' · Pose ' + (ovl ? (ovlStat.poses ? 'ok' : 'FEHLT') : 'n/a') + ' · Draws ' + renderer.info.render.calls + ' · Canvas ' + gl3.drawingBufferWidth + '×' + gl3.drawingBufferHeight + (gl3.isContextLost() ? ' · GL VERLOREN' : '');
-    $('diag').textContent = DEBUG ? 'v21 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
+    $('diag').textContent = DEBUG ? 'v22 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
   }
 }
 // ---------- Gesten: 1 Finger verschieben, 2 Finger drehen (nur freier Modus) ----------
@@ -740,10 +742,16 @@ const footPlane = () => new THREE.Plane(YAX, -(align.a.y + align.adj.y));      /
 function hitFoot(origin, dir) {
   const p = new THREE.Vector3(); if (!new THREE.Ray(origin, dir).intersectPlane(footPlane(), p) || p.distanceTo(origin) > 40) return null; return p;
 }
-const gestureOf = pts => pts.length === 1 ? { n: 1, gp: pts[0] } : { n: 2, gp: pts[0].clone().add(pts[1]).multiplyScalar(.5), ang: Math.atan2(pts[1].z - pts[0].z, pts[1].x - pts[0].x) };
+let gestMode = store.get('gm', 'move');
+const modelCenter = () => align.a.clone().add(align.adj);   // im freien Modus liegt die Gebäudemitte hier
+const gestureOf = pts => pts.length === 1 ? { n: 1, gp: pts[0], rang: Math.atan2(pts[0].z - modelCenter().z, pts[0].x - modelCenter().x), rdist: Math.hypot(pts[0].x - modelCenter().x, pts[0].z - modelCenter().z) } : { n: 2, gp: pts[0].clone().add(pts[1]).multiplyScalar(.5), ang: Math.atan2(pts[1].z - pts[0].z, pts[1].x - pts[0].x) };
 function applyGesture(pts, prev) {                           // pts: Bodenpunkte der Finger (Welt); gibt neuen Zustand zurück
   const g = gestureOf(pts);
   if (prev && prev.n === g.n) {
+    if (g.n === 1 && gestMode === 'rot') {                   // ein Finger kreist um die Mitte → Modell dreht mit
+      if (g.rdist > 0.03 * Math.max(bs, 0.2) && prev.rdist > 0.03 * Math.max(bs, 0.2)) { const d = g.rang - prev.rang; align.yaw -= Math.atan2(Math.sin(d), Math.cos(d)); applyAlignment(); }
+      return g;
+    }
     align.adj.add(g.gp.clone().sub(prev.gp).setY(0));
     if (g.n === 2) { const d = g.ang - prev.ang; align.yaw -= Math.atan2(Math.sin(d), Math.cos(d)); }   // dreht genau mit den Fingern
     applyAlignment();
@@ -793,6 +801,7 @@ touchEl.addEventListener('pointermove', e => {
 const endTouch = e => { tp.delete(e.pointerId); const pts = tp.size && gestOK() ? domPoints() : null; g0 = pts ? gestureOf(pts) : null; };
 touchEl.addEventListener('pointerup', endTouch); touchEl.addEventListener('pointercancel', endTouch);
 
+$('gestRow').addEventListener('click', e => { const m = e.target.closest && e.target.closest('[data-gm]'); if (!m) return; gestMode = m.dataset.gm; store.set('gm', gestMode); xrG = null; g0 = null; arText(); });
 $('btnQuick').onclick = () => startAR(true);
 $('btnARTable').onclick = () => startAR(true, true);
 function setMenu(off) { document.body.classList.toggle('menuOff', off); $('btnMenu').textContent = off ? 'Menü ▴' : 'Menü ▾'; }
@@ -828,7 +837,7 @@ renderer.setAnimationLoop((t, frame) => {
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 21'; $('chkOvl').checked = store.get('ovl', true);
+$('diag').textContent = 'Version 22'; $('chkOvl').checked = store.get('ovl', true);
 </script>
 </body>
 </html>

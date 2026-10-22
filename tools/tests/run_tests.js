@@ -124,6 +124,19 @@ const near = (a, b, eps = 1e-3) => Math.abs(a - b) < eps;
       return { dx: c1.x - c0.x, dyaw: align.yaw - y1, mitte: c2.distanceTo(c1) };
     });
     ok(Math.abs(xg.dx - 0.1) < 1e-3 && Math.abs(Math.abs(xg.dyaw) - Math.PI / 2) < 1e-3 && xg.mitte < 1e-3, 'WebXR-Gesten: 10 cm ziehen → 10 cm verschoben, Finger 90° gedreht → Modell 90° um die Mitte ' + JSON.stringify({ dx: +xg.dx.toFixed(4), dyaw: +xg.dyaw.toFixed(3) }));
+    // Ein-Finger-Drehmodus (Chrome liefert in AR oft nur EINEN Finger als Eingabe)
+    const rot1 = await p.evaluate(() => {
+      document.querySelector('[data-gm="rot"]').click();
+      const y0 = align.a.y + align.adj.y, M = modelCenter();
+      const frameOf = () => ({ getPose: s => ({ transform: { matrix: new Float32Array([1,0,0,0, 0,0,-1,0, 0,1,0,0, s.x, y0 + 1, s.z, 1]) } }) });
+      const C = () => new THREE.Vector3(bcen.x, 0, bcen.z).applyMatrix4(model.matrixWorld);
+      const f = { targetRaySpace: { x: M.x + 0.1, z: M.z } }; xrTouch.clear(); xrTouch.add(f); xrG = null;
+      const c0 = C(), yaw0 = align.yaw; xrGestureTick(frameOf());
+      f.targetRaySpace = { x: M.x, z: M.z + 0.1 }; xrGestureTick(frameOf());
+      xrTouch.clear(); xrG = null; const r = { dyaw: align.yaw - yaw0, mitte: C().distanceTo(c0), on: document.querySelector('[data-gm="rot"]').classList.contains('on') };
+      document.querySelector('[data-gm="move"]').click(); return r;
+    });
+    ok(rot1.on && Math.abs(rot1.dyaw + Math.PI / 2) < 1e-3 && rot1.mitte < 1e-3, 'Drehmodus: 1 Finger um 90° um die Mitte geführt → Modell 90° gedreht, Mitte bleibt ' + JSON.stringify({ dyaw: +rot1.dyaw.toFixed(3) }));
     // Mehrfach starten/beenden: genau EIN Hilfskontext, Zeichenkontext bleibt intakt, Preview zeichnet wieder
     const multi = [];
     for (let i = 0; i < 4; i++) {
