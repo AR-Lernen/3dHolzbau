@@ -42,11 +42,10 @@ layers = collections.OrderedDict()
 for e in m['Elements']:
     typ = 'alt' if e['name'] in ALT else 'holz'
     fl = floor_of.get(e['UID'], '?')
-    Ly = layers.setdefault((typ, fl), dict(p=[], i=[], c=[], ep=[], ei=[], n=0, en=0))
+    Ly = layers.setdefault((typ, fl, e['name']), dict(p=[], i=[], ep=[], ei=[], n=0, en=0))
     for vid in e['volumes']:
         p, i = decode(shapes[vid])
         Ly['i'].append(i + Ly['n']); Ly['p'].append(p); Ly['n'] += len(p)
-        Ly['c'].append(np.tile(np.array(rgb(COL.get(e['name'], '#cccccc')), np.uint8), (len(p), 1)))
     for a, b in e['outlines']:
         vid = a if shapes[a]['description']['type'] == 'OUTLINE' else b
         p, i = decode(shapes[vid]); Ly['ei'].append(i + Ly['en']); Ly['ep'].append(p); Ly['en'] += len(p)
@@ -55,11 +54,11 @@ b64 = lambda a: base64.b64encode(a.tobytes()).decode()
 def idx(a): return ('u16', b64(a.astype('<u2'))) if a.max() < 65536 else ('u32', b64(a.astype('<u4')))
 res = []
 allp = []
-for (typ, fl), Ly in layers.items():
+for (typ, fl, name), Ly in layers.items():
     P = np.concatenate(Ly['p']).astype('<f4'); allp.append(P)
     I = np.concatenate(Ly['i']); EP = np.concatenate(Ly['ep']).astype('<f4'); EI = np.concatenate(Ly['ei'])
     it, ib = idx(I); et, eb = idx(EI)
-    res.append(dict(type=typ, floor=fl, p=b64(P), i=ib, it=it, c=b64(np.concatenate(Ly['c'])),
+    res.append(dict(type=typ, floor=fl, name=name, col=COL.get(name, '#cccccc'), p=b64(P), i=ib, it=it,
                     ep=b64(EP), ei=eb, eit=et))
 A = np.concatenate(allp)
 json.dump(dict(name=m['ProjectInfo']['modelName'], min=A.min(0).tolist(), max=A.max(0).tolist(), layers=res),
