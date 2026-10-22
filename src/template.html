@@ -100,7 +100,7 @@
         <div class="row" style="margin-bottom:8px">
           <button id="btnFront" class="flex1">Modell vor mich setzen</button>
           <button id="btnPlace" class="flex1">Auf Fläche setzen</button>
-          <button id="btnRealign" class="pri flex1">Exakt einpassen</button>
+          <button id="btnRealign" class="flex1">Exakt einpassen</button>
         </div>
         <div class="row" style="justify-content:space-between;align-items:center">
           <div class="pad">
@@ -431,11 +431,11 @@ $('btnUndo').onclick = () => {
 $('btnRealign').onclick = () => { if (stage === 'free' || stage === 'done') startFit(true); };
 $('btnPlace').onclick = () => {
   if (!hitPose) { flash('Noch keine Fläche erkannt.'); return; }
-  align.a = new THREE.Vector3().setFromMatrixPosition(hitPose); align.adj.set(0, 0, 0); applyAlignment();
+  align.a = new THREE.Vector3().setFromMatrixPosition(hitPose); align.adj.set(0, 0, 0); applyAlignment(); flash('Modell auf die Fläche gesetzt.');
 };
 $('btnFront').onclick = () => {
   const cam = renderer.xr.getCamera(), fw = new THREE.Vector3(); cam.getWorldDirection(fw); fw.y = 0; if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize();
-  const c = cam.position; align.a = new THREE.Vector3(c.x, 0, c.z).addScaledVector(fw, Math.max(bsize.x, bsize.z) * 0.8); align.adj.set(0, 0, 0); applyAlignment();
+  const c = cam.position; align.a = new THREE.Vector3(c.x, 0, c.z).addScaledVector(fw, Math.max(bsize.x, bsize.z) * 0.8); align.adj.set(0, 0, 0); applyAlignment(); flash('Modell gesetzt – ca. ' + Math.max(bsize.x, bsize.z).toFixed(0) + ' m vor dir. Orange Säule = Gebäudemitte.');
 };
 $('btnExit').onclick = () => xrSession && xrSession.end();
 $('chkScale').onchange = e => { align.useScale = e.target.checked; applyAlignment(); arText(); };
@@ -516,14 +516,18 @@ renderer.setAnimationLoop((t, frame) => {
     updateAim();
     if (t - lastDiag > 500) {
       lastDiag = t; const c = renderer.xr.getCamera().position, mp = new THREE.Vector3(bcen.x, 0, bcen.z).applyMatrix4(model.matrixWorld);
-      $('diag').textContent = 'v6 · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE (Handy langsam bewegen, gutes Licht)') + ' · Modell (orange Säule) ' + (Math.hypot(mp.x - c.x, mp.z - c.z)).toFixed(1) + ' m entfernt';
+      const cm = renderer.xr.getCamera(), fw = new THREE.Vector3(); cm.getWorldDirection(fw); fw.y = 0; fw.normalize();
+      const v = new THREE.Vector3(mp.x - c.x, 0, mp.z - c.z), rt = new THREE.Vector3().crossVectors(fw, YAX);
+      const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
+      const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
+      $('diag').textContent = 'v7 · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · orange Säule: ' + dist.toFixed(1) + ' m, ' + where;
     }
   }
   renderer.render(scene, camera);
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 6';
+$('diag').textContent = 'Version 7';
 </script>
 </body>
 </html>
