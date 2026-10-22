@@ -66,7 +66,7 @@
 <div id="ui">
   <div id="cross"></div>
   <div id="top">
-    <div id="status" class="panel"><b id="stTitle">Vorschau</b><small id="stText"></small><small id="diag" style="font-size:12px"></small></div>
+    <div id="status" class="panel"><div id="planMini" class="hide" style="float:right;margin:0 0 4px 8px"></div><b id="stTitle">Vorschau</b><small id="stText"></small><small id="diag" style="font-size:12px"></small></div>
     <button id="btnLay" class="sm">Ebenen</button>
   </div>
   <div id="msg" class="panel hide"></div>
@@ -96,6 +96,9 @@
       <button id="btnQuick" class="pri" style="width:100%;margin-bottom:8px" disabled>Schnellstart: Modell 1:1 in AR ansehen</button>
       <label class="chk" style="margin-bottom:8px"><input id="chkOvl" type="checkbox" checked> Kompatibilitätsmodus: Modell im Overlay zeichnen</label>
       <button id="btnTable" style="width:100%;margin-bottom:10px">Tisch-Modus 1:50 (Kamera + Lage, ohne AR-Tracking)</button>
+      <div class="hd" style="margin-top:0">Referenzwand am Altbau (empfohlen)</div>
+      <div class="row" id="pvWalls"></div>
+      <div id="planPv" style="display:flex;justify-content:center;margin:6px 0"></div>
       <div class="row" style="margin-bottom:8px">
         <span style="color:var(--mut)">Fixpunkte im Modell:</span>
         <label class="chk"><input id="chk2" type="checkbox" checked> 2 Punkte</label>
@@ -112,6 +115,13 @@
     </div>
 
     <!-- AR -->
+    <div id="wallPanel" class="panel arOnly hide">
+      <div class="hd" style="margin-top:0">Referenzwand am Altbau wählen</div>
+      <div id="planBox" style="display:flex;justify-content:center"></div>
+      <div class="row" id="wallBtns" style="margin-top:6px"></div>
+      <div class="row" style="margin-top:6px"><button class="sm" id="btnCustom">Eigene Punkte im Modell wählen</button><button class="sm" id="btnWallCancel">Abbrechen</button></div>
+    </div>
+
     <div id="arPanel" class="panel arOnly">
       <div class="row" id="arSet">
         <button id="btnSet" class="pri flex1">setzen</button>
@@ -293,8 +303,78 @@ $('chkXray').onchange = () => { for (const m of lineMats) { m.depthTest = !$('ch
 $('btnLay').onclick = () => $('layPanel').classList.toggle('hide');
 syncUI(); applyClip(); applyVis(); applyOpacity(); applyCut();
 
+// ---------- Referenzwände des Altbaus ----------
+// Der Holzbau setzt sich an den Altbau. Sinnvoll ist daher, die Außenecken des Altbaus einzumessen.
+const REF = MODEL.ref, ROLE_NAME = { anbau: 'Anbauwand', rueck: 'Rückwand', links: 'Seitenwand links', rechts: 'Seitenwand rechts' };
+const ROLE_SUB = { anbau: 'hier setzt der Holzbau an', rueck: 'gegenüber dem Holzbau', links: 'links, vom Holzbau aus gesehen', rechts: 'rechts, vom Holzbau aus gesehen' };
+const SIDE_N = { '-x': [-1, 0], '+x': [1, 0], '-z': [0, -1], '+z': [0, 1] };
+const PLAN_LBL = { anbau: 'Anbauwand', rueck: 'Rückwand', links: 'Seite links', rechts: 'Seite rechts' };
+const WALLS = {}; let VIEW_F = [0, 1], VIEW_R = [-1, 0];
+(function buildWalls() {
+  const over = { '-x': REF.x0 - REF.hx0, '+x': REF.hx1 - REF.x1, '-z': REF.z0 - REF.hz0, '+z': REF.hz1 - REF.z1 };
+  const anbau = Object.keys(over).sort((a, b) => over[b] - over[a])[0], n0 = SIDE_N[anbau];
+  VIEW_F = [-n0[0], -n0[1]]; VIEW_R = [-VIEW_F[1], VIEW_F[0]];             // Blick vom Holzbau auf den Altbau; rechts = f × oben
+  const roleOf = s => { const n = SIDE_N[s]; if (s === anbau) return 'anbau'; if (n[0] === n0[0] * -1 && n[1] === n0[1] * -1) return 'rueck'; return n[0] * VIEW_R[0] + n[1] * VIEW_R[1] > 0 ? 'rechts' : 'links'; };
+  const role = {}; for (const s of Object.keys(SIDE_N)) role[s] = roleOf(s);
+  const cornerName = (xs, zs) => 'Ecke ' + ROLE_NAME[role[xs]] + ' / ' + ROLE_NAME[role[zs]];
+  const corner = (xs, zs) => ({ p: [xs === '-x' ? REF.x0 : REF.x1, REF.y, zs === '-z' ? REF.z0 : REF.z1], label: cornerName(xs, zs) });
+  for (const s of Object.keys(SIDE_N)) {
+    const n = SIDE_N[s], cs = s[1] === 'x' ? [corner(s, '-z'), corner(s, '+z')] : [corner('-x', s), corner('+x', s)];
+    const fo = [-n[0], -n[1]], ro = [-fo[1], fo[0]], key = c => c.p[0] * ro[0] + c.p[2] * ro[1];       // von außen auf die Wand: links = kleiner Wert
+    cs.sort((a, b) => key(a) - key(b));
+    WALLS[role[s]] = { role: role[s], side: s, name: ROLE_NAME[role[s]], sub: ROLE_SUB[role[s]], n, A: cs[0], B: cs[1], len: Math.hypot(cs[0].p[0] - cs[1].p[0], cs[0].p[2] - cs[1].p[2]) };
+  }
+})();
+let refWall = store.get('wall', null); if (!WALLS[refWall]) refWall = null;
+function drawPlan(el, w, W, H, mini, active) {
+  const f = VIEW_F, r = VIEW_R, pr = (x, z) => [x * r[0] + z * r[1], x * f[0] + z * f[1]];
+  const pts = [[REF.x0, REF.z0], [REF.x1, REF.z0], [REF.x1, REF.z1], [REF.x0, REF.z1], [REF.hx0, REF.hz0], [REF.hx1, REF.hz1], [REF.hx0, REF.hz1], [REF.hx1, REF.hz0]].map(q => pr(q[0], q[1]));
+  const padX = mini ? 8 : 74, padY = mini ? 8 : 24, minX = Math.min(...pts.map(q => q[0])), maxX = Math.max(...pts.map(q => q[0])), minY = Math.min(...pts.map(q => q[1])), maxY = Math.max(...pts.map(q => q[1]));
+  const s = Math.min((W - 2 * padX) / (maxX - minX), (H - 2 * padY) / (maxY - minY));
+  const sc = (x, z) => { const q = pr(x, z); return [padX + (q[0] - minX) * s, padY + (maxY - q[1]) * s]; };
+  const P = (x, z) => sc(x, z).map(v => v.toFixed(1)).join(',');
+  let h = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%">';
+  const hb = [sc(REF.hx0, REF.hz0), sc(REF.hx1, REF.hz0), sc(REF.hx1, REF.hz1), sc(REF.hx0, REF.hz1)].map(q => q.map(v => v.toFixed(1)).join(',')).join(' ');
+  h += '<polygon points="' + hb + '" fill="rgba(224,176,96,.13)" stroke="#e0b060" stroke-width="1.5" stroke-dasharray="4 3"/>';
+  h += '<polygon points="' + [P(REF.x0, REF.z0), P(REF.x1, REF.z0), P(REF.x1, REF.z1), P(REF.x0, REF.z1)].join(' ') + '" fill="#2b3238" fill-opacity=".85" stroke="none"/>';
+  for (const k of Object.keys(WALLS)) {
+    const wl = WALLS[k], a = wl.A.p, b = wl.B.p, on = k === w, c1 = sc(a[0], a[2]), c2 = sc(b[0], b[2]);
+    h += '<line x1="' + c1[0].toFixed(1) + '" y1="' + c1[1].toFixed(1) + '" x2="' + c2[0].toFixed(1) + '" y2="' + c2[1].toFixed(1) + '" stroke="' + (on ? '#ffb347' : '#7d8890') + '" stroke-width="' + (on ? 6 : 3) + '" stroke-linecap="round"/>';
+    if (!mini) {
+      const mx = (c1[0] + c2[0]) / 2, my = (c1[1] + c2[1]) / 2, nx = wl.n[0] * r[0] + wl.n[1] * r[1], ny = -(wl.n[0] * f[0] + wl.n[1] * f[1]);
+      const tx = mx + nx * 9, ty = my + ny * 12 + (Math.abs(ny) > .5 ? 3 : 3), an = nx > .5 ? 'start' : nx < -.5 ? 'end' : 'middle';
+      h += '<text x="' + tx.toFixed(1) + '" y="' + ty.toFixed(1) + '" text-anchor="' + an + '" font-size="10" fill="' + (on ? '#ffb347' : '#9aa4ab') + '" font-weight="' + (on ? 700 : 400) + '" font-family="system-ui,sans-serif">' + PLAN_LBL[k] + '</text>';
+    }
+  }
+  if (!mini) { const ht = sc((REF.hx0 + REF.hx1) / 2, (REF.hz0 + REF.hz1) / 2 - (REF.hz1 - REF.hz0) * .22); h += '<text x="' + ht[0].toFixed(1) + '" y="' + ht[1].toFixed(1) + '" text-anchor="middle" font-size="10" fill="#e0b060" font-family="system-ui,sans-serif">Holzbau</text>'; }
+  const wl = WALLS[w];
+  if (wl) for (const [L, c, col] of [['A', wl.A, '#ffb347'], ['B', wl.B, '#4cd68a']]) {
+    const q = sc(c.p[0], c.p[2]), act = active === L;
+    h += '<circle cx="' + q[0].toFixed(1) + '" cy="' + q[1].toFixed(1) + '" r="' + (mini ? 7 : 9) + '" fill="' + col + '" stroke="' + (act ? '#fff' : '#14171a') + '" stroke-width="' + (act ? 2.5 : 1.5) + '"/><text x="' + q[0].toFixed(1) + '" y="' + (q[1] + 3.5).toFixed(1) + '" text-anchor="middle" font-size="' + (mini ? 9 : 11) + '" font-weight="700" fill="#1b1206" font-family="system-ui,sans-serif">' + L + '</text>';
+  }
+  h += '</svg>'; el.innerHTML = h;
+}
+function wallButtons(el) {
+  el.innerHTML = ['anbau', 'rueck', 'links', 'rechts'].map(k => '<button class="sm flex1" data-wall="' + k + '">' + WALLS[k].name + '<br><span style="font-size:11px;color:var(--mut)">' + WALLS[k].len.toFixed(1) + ' m</span></button>').join('');
+}
+function renderPlans() {
+  drawPlan($('planPv'), refWall, 300, 200, false);
+  drawPlan($('planBox'), refWall, 300, 200, false);
+  drawPlan($('planMini'), refWall, 96, 84, true, stage === 'rB' ? 'B' : 'A');
+  for (const b of document.querySelectorAll('[data-wall]')) b.classList.toggle('on', b.dataset.wall === refWall);
+}
+wallButtons($('pvWalls')); wallButtons($('wallBtns'));
+function chooseWall(k) {
+  const w = WALLS[k]; refWall = k; store.set('wall', k); ptA = w.A.p.slice(); ptB = w.B.p.slice(); store.set('A', ptA); store.set('B', ptB); picking = null;
+  refreshPoints();
+  if (typeof inAR !== 'undefined' && inAR && stage === 'wall') { seq = $('chk2').checked ? ['rA', 'rB'] : ['rA']; seqIdx = 0; stage = seq[0]; model.visible = false; fitFresh = true; arText(); }
+  renderPlans();
+}
+document.addEventListener('click', e => { const k = e.target.closest && e.target.closest('[data-wall]'); if (k) chooseWall(k.dataset.wall); });
+
 // ---------- Fixpunkte im Modell ----------
 let ptA = store.get('A', null), ptB = store.get('B', null);
+let fitFresh = false;
 let picking = null;
 const markers = new THREE.Group(); model.add(markers);
 function mkMarker(label, color) {
@@ -321,13 +401,15 @@ function refreshPoints() {
     : ready ? '' : 'Optional: Punkte vorab wählen, die du auf der Baustelle sicher findest (Gebäudeecken). Oder Schnellstart und in AR einpassen.';
   const d = ptA && ptB && $('chk2').checked ? new THREE.Vector3().fromArray(ptA).distanceTo(new THREE.Vector3().fromArray(ptB)) : 0;
   if (d) $('pvHint').textContent += (picking ? ' ' : '') + 'Abstand A–B im Modell: ' + d.toFixed(3) + ' m';
+  if (refWall && WALLS[refWall] && ptA && ptB) $('pvHint').textContent = WALLS[refWall].name + ' (' + WALLS[refWall].sub + '). A = ' + WALLS[refWall].A.label + ', B = ' + WALLS[refWall].B.label + ' · Abstand ' + d.toFixed(2) + ' m';
+  if (typeof renderPlans === 'function') renderPlans();
   $('pickA').classList.toggle('on', picking === 'A'); $('pickB').classList.toggle('on', picking === 'B');
 }
 $('pickA').onclick = () => { picking = picking === 'A' ? null : 'A'; refreshPoints(); };
 $('pickB').onclick = () => { picking = picking === 'B' ? null : 'B'; refreshPoints(); };
 $('chk2').onchange = () => { store.set('two', $('chk2').checked); refreshPoints(); };
 $('chk2').checked = store.get('two', true);
-$('btnClear').onclick = () => { ptA = ptB = null; store.set('A', null); store.set('B', null); refreshPoints(); };
+$('btnClear').onclick = () => { refWall = null; store.set('wall', null); ptA = ptB = null; store.set('A', null); store.set('B', null); refreshPoints(); };
 
 // ---------- Vorschau-Kamera (Orbit) ----------
 const orb = { t: bcen.clone(), r: bsize.length() * 0.95, az: -0.8, el: 0.45 };
@@ -386,6 +468,7 @@ function pickAt(x, y) {
     if (d < bd) { bd = d; best = v; }
   }
   const p = best.toArray();                    // Modellkoordinaten (Modellgruppe ist in der Vorschau Identität)
+  refWall = null; store.set('wall', null);
   if (picking === 'A') { ptA = p; store.set('A', p); picking = $('chk2').checked && !ptB ? 'B' : null; }
   else { ptB = p; store.set('B', p); picking = null; }
   refreshPoints();
@@ -442,7 +525,8 @@ const TXT = {
   mA: ['Modellpunkt A', 'Fadenkreuz auf eine Ecke im Modell richten (grüner Punkt rastet ein), dann setzen.'],
   mB: ['Modellpunkt B', 'Zweite Ecke im Modell anvisieren, möglichst weit von A entfernt.'],
   rA: ['Punkt A am Bau', 'Fadenkreuz genau auf den echten Punkt A halten, dann setzen.'],
-  rB: ['Punkt B am Bau', 'Zum echten Punkt B gehen und anvisieren.']
+  rB: ['Punkt B am Bau', 'Zum echten Punkt B gehen und anvisieren.'],
+  wall: ['Referenzwand', 'Wähle die Altbauwand, an deren beiden Außenecken du das Modell einmisst. Der Holzbau setzt sich dann an den Altbau.']
 };
 const BTN = { mA: 'Modellpunkt A setzen', mB: 'Modellpunkt B setzen', rA: 'Punkt A am Bau setzen', rB: 'Punkt B am Bau setzen' };
 function arText() {
@@ -450,13 +534,20 @@ function arText() {
   if (stage === 'done') {
     $('stTitle').textContent = 'Eingepasst';
     $('stText').innerHTML = (align.info || 'Ein Punkt: Richtung mit ↺/↻ einstellen.') + '<small>Feinjustage unten · Ebenen oben rechts</small>';
+  } else if ((stage === 'rA' || stage === 'rB') && refWall && WALLS[refWall]) {
+    const w = WALLS[refWall], c = stage === 'rA' ? w.A : w.B;
+    $('stTitle').textContent = 'Punkt ' + (stage === 'rA' ? 'A' : 'B') + ' · ' + w.name;
+    $('stText').innerHTML = c.label + ' – Außenecke am Boden (Wandfuß).<small>Von außen auf die ' + w.name + ' gesehen ist A die linke, B die rechte Ecke.</small>';
+    $('btnSet').textContent = BTN[stage];
   } else { $('stTitle').textContent = inTab ? 'Tisch-Modus' : TXT[stage][0]; $('stText').textContent = inTab ? 'Modell steht vor dir (Kamerabild + Handylage, kein Positions-Tracking). Maßstab wählen, mit den Pfeilen verschieben, ↺/↻ drehen.' : TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
   const adj = stage === 'free' || stage === 'done';
-  $('arSet').classList.toggle('hide', adj); $('arAdj').classList.toggle('hide', !adj);
+  $('arSet').classList.toggle('hide', adj || stage === 'wall'); $('arAdj').classList.toggle('hide', !adj);
+  $('wallPanel').classList.toggle('hide', stage !== 'wall'); $('arPanel').classList.toggle('hide', stage === 'wall');
+  $('planMini').classList.toggle('hide', !(refWall && (stage === 'rA' || stage === 'rB'))); if (refWall && (stage === 'rA' || stage === 'rB')) renderPlans();
   $('btnPlace').classList.toggle('hide', stage !== 'free' || inTab); $('btnFront').classList.toggle('hide', stage !== 'free'); $('scaleRow').classList.toggle('hide', stage !== 'free'); $('btnRealign').classList.toggle('hide', inTab);
   for (const b of $('scaleRow').querySelectorAll('button')) b.classList.toggle('on', Math.abs(+b.dataset.sc - bs) < 1e-6); $('lblScale').classList.toggle('hide', stage !== 'done');
   $('btnRealign').textContent = stage === 'free' ? 'Exakt einpassen' : 'Neu einpassen';
-  const showAim = (stage !== 'free' && stage !== 'done') || aimOn;
+  const showAim = (stage !== 'free' && stage !== 'done' && stage !== 'wall') || aimOn;
   document.body.classList.toggle('aiming', showAim);
   $('btnPlace').textContent = aimOn ? 'Hier absetzen' : 'Auf Fläche setzen'; $('btnPlace').classList.toggle('pri', aimOn);
   beacon.visible = DEBUG && (inAR || inTab) && stage === 'free'; testCube.visible = DEBUG && inAR;
@@ -465,12 +556,13 @@ function arText() {
   aimMark.visible = (stage === 'mA' || stage === 'mB') && !!aimPt;
 }
 function startFit(fresh) {
-  const two = $('chk2').checked;
-  seq = fresh ? (two ? ['mA', 'mB', 'rA', 'rB'] : ['mA', 'rA']) : (two ? ['rA', 'rB'] : ['rA']);
-  seqIdx = 0; stage = seq[0];
-  if (fresh) { ptA = ptB = null; model.visible = true; } else model.visible = false;
-  align.a = align.b = null; fixA.visible = fixB.visible = false; refreshPoints(); arText();
+  const two = $('chk2').checked; fitFresh = fresh;
+  if (fresh) { ptA = ptB = null; refWall = null; model.visible = true; seq = []; seqIdx = 0; stage = 'wall'; }
+  else { seq = two ? ['rA', 'rB'] : ['rA']; seqIdx = 0; stage = seq[0]; model.visible = false; }
+  align.a = align.b = null; fixA.visible = fixB.visible = false; refreshPoints(); arText(); renderPlans();
 }
+$('btnCustom').onclick = () => { const two = $('chk2').checked; refWall = null; store.set('wall', null); ptA = ptB = null; seq = two ? ['mA', 'mB', 'rA', 'rB'] : ['mA', 'rA']; seqIdx = 0; stage = seq[0]; model.visible = true; refreshPoints(); arText(); };
+$('btnWallCancel').onclick = () => { stage = 'free'; arText(); };
 function finishFit() {
   align.mode = 'fix'; align.adj.set(0, 0, 0); align.yaw = 0; model.visible = true; stage = 'done';
   applyAlignment(); refreshPoints(); arText();
@@ -498,7 +590,8 @@ function setPoint() {
 }
 $('btnSet').onclick = setPoint;
 $('btnUndo').onclick = () => {
-  if (seqIdx === 0) { stage = 'free'; align.mode = 'free'; align.a = align.a || new THREE.Vector3(); model.visible = true; applyAlignment(); }
+  if (seqIdx === 0 && fitFresh) { stage = 'wall'; model.visible = true; refWall = null; }
+  else if (seqIdx === 0) { stage = 'free'; align.mode = 'free'; align.a = align.a || new THREE.Vector3(); model.visible = true; applyAlignment(); }
   else { seqIdx--; stage = seq[seqIdx]; }
   arText();
 };
@@ -607,7 +700,7 @@ function arTick(t, frame) {
     const v = new THREE.Vector3(mp.x - c.x, 0, mp.z - c.z), rt = new THREE.Vector3().crossVectors(fw, YAX);
     const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
     const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
-    $('diag').textContent = DEBUG ? 'v14' + (ovl ? ' Overlay' : ' XR') + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + ' · Draws ' + renderer.info.render.calls + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (stage === 'free' || stage === 'done' ? '' : '');
+    $('diag').textContent = DEBUG ? 'v15' + (ovl ? ' Overlay' : ' XR') + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + ' · Draws ' + renderer.info.render.calls + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (stage === 'free' || stage === 'done' ? '' : '');
   }
 }
 // ---------- Tisch-Modus: Kamerabild + Gerätelage, ohne WebXR ----------
@@ -636,7 +729,7 @@ async function startTable() {
 function stopTable() {
   removeEventListener('deviceorientation', onOri); if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null; $('cam').srcObject = null;
   inTab = false; document.body.classList.remove('ar', 'tab', 'aiming'); bs = 1; resetModelTransform(); camera.fov = 55; camera.updateProjectionMatrix();
-  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 14'; refreshPoints();
+  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 15'; refreshPoints();
 }
 $('btnTable').onclick = startTable;
 $('btnQuick').onclick = () => startAR(true);
@@ -672,7 +765,7 @@ renderer.setAnimationLoop((t, frame) => {
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 14'; $('chkOvl').checked = store.get('ovl', true);
+$('diag').textContent = 'Version 15'; $('chkOvl').checked = store.get('ovl', true);
 </script>
 </body>
 </html>

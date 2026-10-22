@@ -119,6 +119,17 @@ for (typ, fl, name, tk), Ly in layers.items():
         ti = texinfo[Ly['tid']]; d.update(uv=b64(np.concatenate(Ly['uv'])), img=image_b64(ti['key'], ti['blob']), tint=ti['blend'])
     res.append(d)
 A = np.concatenate(allp)
-json.dump(dict(name=m['ProjectInfo']['modelName'], min=A.min(0).tolist(), max=A.max(0).tolist(), imgs=imgs, layers=res),
+# Referenz für die Einpassung: Außenmaße der Altbau-Außenwände (EG, Vollziegel) und Grundriss des Holzbaus (EG-Wandstiele)
+def bbox_of(pred):
+    lo, hi = np.full(3, 1e9), np.full(3, -1e9)
+    for e in m['Elements']:
+        if pred(e):
+            d = shapes[e['volumes'][0]]['description']; lo = np.minimum(lo, d['bboxMin']); hi = np.maximum(hi, d['bboxMax'])
+    return lo, hi
+alo, ahi = bbox_of(lambda e: e['name'] == 'Vollziegel' and floor_of.get(e['UID']) == 'EG')
+hlo, hhi = bbox_of(lambda e: e['name'] == 'Wandstiel' and floor_of.get(e['UID']) == 'EG')
+REF = dict(x0=float(alo[0]), x1=float(ahi[0]), z0=float(alo[2]), z1=float(ahi[2]), y=float(alo[1]),
+           hx0=float(hlo[0]), hx1=float(hhi[0]), hz0=float(hlo[2]), hz1=float(hhi[2]))
+json.dump(dict(name=m['ProjectInfo']['modelName'], min=A.min(0).tolist(), max=A.max(0).tolist(), imgs=imgs, ref=REF, layers=res),
           open(out, 'w'), separators=(',', ':'))
 print(len(res), 'Ebenen', len(A), 'Vertices', len(imgs), 'Bilder', sum(len(v) for v in imgs.values()) // 1024, 'KB Bilder')
