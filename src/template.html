@@ -172,8 +172,11 @@ for (const L of MODEL.layers) {
   const lines = new THREE.LineSegments(lg, lm); lines.renderOrder = 2; model.add(lines); lineMats.push(lm);
   layers.push({ type: L.type, floor: L.floor, mesh, lines, occ });
 }
+const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 6, 10), new THREE.MeshBasicMaterial({ color: 0xffb347, depthTest: false, transparent: true, opacity: 0.9 }));
+beacon.renderOrder = 7; model.add(beacon);
 const bmin = new THREE.Vector3(...MODEL.min), bmax = new THREE.Vector3(...MODEL.max);
 const bcen = bmin.clone().add(bmax).multiplyScalar(.5), bsize = bmax.clone().sub(bmin);
+beacon.position.set(bcen.x, 3, bcen.z); beacon.visible = false;
 
 // ---------- Ebenen-UI ----------
 const floors = [...new Set(MODEL.layers.map(l => l.floor))];
@@ -382,6 +385,7 @@ function arText() {
   $('btnPlace').classList.toggle('hide', stage !== 'free'); $('btnFront').classList.toggle('hide', stage !== 'free'); $('lblScale').classList.toggle('hide', stage !== 'done');
   $('btnRealign').textContent = stage === 'free' ? 'Exakt einpassen' : 'Neu einpassen';
   document.body.classList.toggle('aiming', stage !== 'done');
+  beacon.visible = inAR && stage === 'free';
   $('btnSet').disabled = (stage === 'mA' || stage === 'mB') && !aimPt;
   reticle.visible = (stage === 'rA' || stage === 'rB' || stage === 'free') && !!hitPose;
   aimMark.visible = (stage === 'mA' || stage === 'mB') && !!aimPt;
@@ -505,21 +509,21 @@ renderer.setAnimationLoop((t, frame) => {
       const res = frame.getHitTestResults(hitSource);
       if (res.length) {
         const pose = res[0].getPose(renderer.xr.getReferenceSpace());
-        hitPose = new THREE.Matrix4().fromArray(pose.transform.matrix); reticle.matrix.copy(hitPose);
+        hitPose = new THREE.Matrix4().fromArray(pose.transform.matrix); reticle.matrix.copy(hitPose); reticle.matrixWorld.copy(hitPose); reticle.matrixWorldNeedsUpdate = true;
         reticle.visible = stage === 'rA' || stage === 'rB' || stage === 'free';
       } else { hitPose = null; reticle.visible = false; }
     }
     updateAim();
     if (t - lastDiag > 500) {
       lastDiag = t; const c = renderer.xr.getCamera().position, mp = new THREE.Vector3(bcen.x, 0, bcen.z).applyMatrix4(model.matrixWorld);
-      $('diag').textContent = 'v5 · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE (Handy langsam bewegen, gutes Licht)') + ' · Modell ' + (Math.hypot(mp.x - c.x, mp.z - c.z)).toFixed(1) + ' m entfernt';
+      $('diag').textContent = 'v6 · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE (Handy langsam bewegen, gutes Licht)') + ' · Modell (orange Säule) ' + (Math.hypot(mp.x - c.x, mp.z - c.z)).toFixed(1) + ' m entfernt';
     }
   }
   renderer.render(scene, camera);
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 5';
+$('diag').textContent = 'Version 6';
 </script>
 </body>
 </html>
