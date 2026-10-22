@@ -80,7 +80,9 @@ Button **„Tisch-Modus 1:50“**: Kamerabild plus Handylage, das Modell steht e
 | Modell nicht sichtbar | „Modell vor mich setzen“; Blick vom Boden heben; Deckkraft erhöhen |
 | Kamerabild, aber kein Modell | *Kompatibilitätsmodus* (Haken in der Vorschau) einschalten |
 | Seite lädt langsam | Erste Ladung ~6 MB, danach schneller; WLAN nutzen |
-| Fehlersuche | `?debug` an den Link: Testwürfel, Mittelmarke, Diagnosewerte |
+| Statuszeile zeigt **Pose FEHLT** | Tracking hat noch keine Position: Handy ruhig halten, dann langsam schwenken; mehr Licht |
+| Statuszeile zeigt **Draws 0** oder **3D-Ansicht abgestürzt** | AR beenden, Seite neu laden (Link mit neuer `?v=`-Zahl) |
+| Fehlersuche | `?debug` an den Link: Testwürfel, Mittelmarke, Diagnosewerte. Screenshot der Statuszeile hilft bei der Fehlersuche |
 
 ## 7. Kurzreferenz
 

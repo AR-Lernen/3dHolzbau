@@ -58,7 +58,8 @@ Python 3 mit: pip install numpy pillow          Node (nur für Tests): npm insta
    cd tools/tests && npm install playwright iwer && node run_tests.js ../../index.html
    ```
    Alle Zeilen müssen `OK` sein. Prüft: Ebenen/Texturen, vier Referenzwände, Maßstab 1:1 (1 m = 1,000 m), Zwei-Punkt-Ausrichtung,
-   Tisch-Modus, AR-Ablauf im simulierten WebXR, keine JS-Fehler. Eigene Sichtprüfung: Seite in Playwright öffnen, Screenshot
+   Zielring (gezeichnete Pixel), Tisch-Modus, AR-Ablauf im simulierten WebXR, mehrfaches Starten/Beenden, keine JS-Fehler.
+   **Grenze:** Das simulierte WebXR ersetzt keinen Gerätetest – Kameradarstellung, ARCore-Tracking und Grafikspeicher nur auf dem Handy prüfbar. Eigene Sichtprüfung: Seite in Playwright öffnen, Screenshot
    ansehen (Ziegel sichtbar? Holz mit Maserung? Grundrisskarte plausibel, richtige Wand hervorgehoben?).
 6. **Veröffentlichen** (nur mit Zustimmung des Nutzers, siehe 6): `index.html` ins Repo, GitHub Pages aktivieren
    (Settings → Pages → Deploy from branch → `main` / root). Danach den Link mit `?v=<Zahl>` ausgeben (umgeht den Browser-Cache).
@@ -130,7 +131,11 @@ angepasst werden (siehe 7).
    stehen → Ring wird bei einseitigem Material weggeschnitten). Deshalb nur die **Position** des Treffers verwenden, Ring waagerecht,
    `DoubleSide`, `frustumCulled = false`. Wirkung nie nur am Zustand (`reticle.visible`) prüfen, sondern an gezeichneten Pixeln (steht in `run_tests.js`).
    Außerdem: Jeder Frame im Overlay-Modus ist in `try/catch`, damit ein Fehler nicht das gesamte Zeichnen stoppt; Fehler erscheinen in der Statuszeile.
-9. Reihenfolge der Dateien im Repo: `index.html` im Wurzelverzeichnis (Pages), `tools/` daneben.
+9. **Nur einen WebGL-Hilfskontext** für die XR-Ebene anlegen und bei jedem AR-Start wiederverwenden. Chrome begrenzt Kontexte pro Seite
+   und verwirft bei Überschreitung den ältesten, also den Zeichenkontext. Im Overlay-Modus Pixeldichte auf 1,5 begrenzen (Grafikspeicher).
+   Fehlt in einem Frame die Kamerapose, mit der letzten Pose weiterzeichnen. Die Statuszeile zeigt Modus, Pose, Draws, Canvasgröße und
+   WebGL-Zustand – bei Problemen auf dem Gerät immer zuerst einen Screenshot davon anfordern.
+10. Reihenfolge der Dateien im Repo: `index.html` im Wurzelverzeichnis (Pages), `tools/` daneben.
 
 ## 7. Wenn das neue Modell nicht ins Schema passt
 

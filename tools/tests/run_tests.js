@@ -99,6 +99,18 @@ const near = (a, b, eps = 1e-3) => Math.abs(a - b) < eps;
     });
     ok(fit.s1 === 'wall' && fit.s2 === 'rA' && fit.s3 === 'done', 'Einpassen: Wandwahl → A → B → eingepasst');
     ok(/Δ 0\.[0-9] cm|Δ -0\.[0-9] cm/.test(fit.info), 'Abweichung nach Einpassung klein: ' + fit.info);
+    // Mehrfach starten/beenden: genau EIN Hilfskontext, Zeichenkontext bleibt intakt, Preview zeichnet wieder
+    const multi = [];
+    for (let i = 0; i < 4; i++) {
+      await p.evaluate(() => xrSession && xrSession.end()); await p.waitForTimeout(500);
+      await p.evaluate(() => document.getElementById('btnQuick').click()); await p.waitForTimeout(1500);
+      multi.push(await p.evaluate(() => { window.__gls = window.__gls || new Set(); window.__gls.add(xrGl); return { inAR, n: window.__gls.size, lost: renderer.getContext().isContextLost(), draws: renderer.info.render.calls }; }));
+    }
+    const last = multi[multi.length - 1];
+    ok(multi.every(m => m.inAR && !m.lost && m.draws > 0) && last.n === 1, 'AR 4× neu gestartet: zeichnet jedes Mal, nur ein Hilfskontext ' + JSON.stringify(last));
+    await p.evaluate(() => xrSession && xrSession.end()); await p.waitForTimeout(800);
+    const back = await p.evaluate(() => ({ inAR, parent: document.getElementById('gl').parentElement.tagName, ar: document.body.classList.contains('ar') }));
+    ok(!back.inAR && back.parent === 'BODY' && !back.ar, 'nach dem Beenden: zurück in der Vorschau, Zeichenfläche wieder an ihrem Platz');
     await ctx.close();
   }
 

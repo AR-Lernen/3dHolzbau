@@ -232,7 +232,8 @@ const testCube = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), new THR
 testCube.position.set(0, 0.12, -0.7); testCube.renderOrder = 20; testCube.visible = false; camera.add(testCube); scene.add(camera);
 const DEBUG = /[?&]debug/.test(location.search);
 const errs = []; addEventListener('error', e => errs.push(String(e.message).slice(0, 80)));
-$('gl').addEventListener('webglcontextlost', e => { e.preventDefault(); errs.push('WebGL-Kontext verloren'); });
+$('gl').addEventListener('webglcontextlost', () => { errs.push('3D-Ansicht abgestürzt (WebGL) – AR beenden und Seite neu laden'); });
+$('gl').addEventListener('webglcontextrestored', () => { errs.push('3D-Ansicht wiederhergestellt'); });
 renderer.debug.onShaderError = (gl, prog, vs, fs) => errs.push('Shader');
 const bmin = new THREE.Vector3(...MODEL.min), bmax = new THREE.Vector3(...MODEL.max);
 const bcen = bmin.clone().add(bmax).multiplyScalar(.5), bsize = bmax.clone().sub(bmin);
@@ -532,7 +533,7 @@ fixA.scale.setScalar(.5); fixB.scale.setScalar(.5);
 })();
 
 const TXT = {
-  free: ['Schnellstart 1:1', 'Das Modell steht im Maßstab 1:1 um dich herum. „Vor mich setzen“ stellt es ein paar Meter vor dich, „Auf Fläche setzen“ auf den Ring (nur wenn ARCore eine Fläche erkennt).'],
+  free: ['Schnellstart', 'Das Modell steht frei im Raum. „Vor mich setzen“ stellt es ein paar Meter vor dich, „Auf Fläche setzen“ auf den Ring (nur wenn ARCore eine Fläche erkennt).'],
   mA: ['Modellpunkt A', 'Fadenkreuz auf eine Ecke im Modell richten (grüner Punkt rastet ein), dann setzen.'],
   mB: ['Modellpunkt B', 'Zweite Ecke im Modell anvisieren, möglichst weit von A entfernt.'],
   rA: ['Punkt A am Bau', 'Fadenkreuz genau auf den echten Punkt A halten, dann setzen.'],
@@ -552,7 +553,7 @@ function arText() {
     $('btnSet').textContent = BTN[stage];
   } else if (stage === 'free' && aimOn && !inTab) {
     $('stTitle').textContent = 'Fläche anzielen'; $('stText').textContent = 'Weißen Ring auf den Boden oder Tisch richten, dann „Hier absetzen“.'; $('btnSet').textContent = '';
-  } else { $('stTitle').textContent = inTab ? 'Tisch-Modus' : TXT[stage][0]; $('stText').textContent = inTab ? 'Modell steht vor dir (Kamerabild + Handylage, kein Positions-Tracking). Maßstab wählen, mit den Pfeilen verschieben, ↺/↻ drehen.' : TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
+  } else { $('stTitle').textContent = inTab ? 'Tisch-Modus' : stage === 'free' ? 'Schnellstart · Maßstab 1:' + Math.round(1 / bs) : TXT[stage][0]; $('stText').textContent = inTab ? 'Modell steht vor dir (Kamerabild + Handylage, kein Positions-Tracking). Maßstab wählen, mit den Pfeilen verschieben, ↺/↻ drehen.' : TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
   const adj = stage === 'free' || stage === 'done';
   $('arSet').classList.toggle('hide', adj || stage === 'wall'); $('arAdj').classList.toggle('hide', !adj);
   $('wallPanel').classList.toggle('hide', stage !== 'wall'); $('arPanel').classList.toggle('hide', stage === 'wall');
@@ -660,8 +661,9 @@ function ovlFrame(t, frame) {
     camera.matrix.fromArray(v.transform.matrix); camera.matrix.decompose(camera.position, camera.quaternion, camera.scale);
     camera.matrixWorld.copy(camera.matrix); camera.matrixWorldNeedsUpdate = true;
   }
+  if (pose) ovlStat.hadPose = true;
   try { arTick(t, frame); } catch (e) { errs.push(String(e.message).slice(0, 80)); }
-  if (pose) renderer.render(scene, camera);
+  if (ovlStat.hadPose) renderer.render(scene, camera);
 }
 async function startAR(quick) {
   if (xrSession) return;
@@ -671,10 +673,12 @@ async function startAR(quick) {
   } catch (e) { flash('AR konnte nicht gestartet werden: ' + e.message); return; }
   if (ovl) {
     try { xrRef = await xrSession.requestReferenceSpace('local-floor'); } catch (e) { xrRef = await xrSession.requestReferenceSpace('local'); }
-    const c = document.createElement('canvas'); xrGl = c.getContext('webgl', { xrCompatible: true, alpha: true });
-    if (xrGl.makeXRCompatible) await xrGl.makeXRCompatible();
+    if (!xrGl || xrGl.isContextLost()) {                     // nur EINEN Hilfskontext anlegen – sonst verwirft Chrome irgendwann den Zeichenkontext
+      xrGl = document.createElement('canvas').getContext('webgl', { xrCompatible: true, alpha: true });
+      if (xrGl.makeXRCompatible) await xrGl.makeXRCompatible();
+    }
     xrSession.updateRenderState({ baseLayer: new XRWebGLLayer(xrSession, xrGl), depthNear: 0.02, depthFar: 200 });
-    renderer.xr.enabled = false; camera.matrixAutoUpdate = false;
+    renderer.xr.enabled = false; camera.matrixAutoUpdate = false; renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); ovlStat.hadPose = false;
     $('ui').insertBefore($('gl'), $('ui').firstChild);
   } else {
     renderer.xr.setReferenceSpaceType('local-floor');
@@ -689,7 +693,7 @@ async function startAR(quick) {
   if (ovl) { resize(); xrSession.requestAnimationFrame(ovlFrame); }
   xrSession.addEventListener('end', () => {
     inAR = false; xrSession = null; hitSource = null; hitPose = null; reticle.visible = aimMark.visible = false; fixA.visible = fixB.visible = false;
-    if (ovl) { document.body.insertBefore($('gl'), $('ui')); camera.matrixAutoUpdate = true; renderer.xr.enabled = true; ovl = false; resize(); }
+    if (ovl) { document.body.insertBefore($('gl'), $('ui')); camera.matrixAutoUpdate = true; renderer.xr.enabled = true; renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); ovl = false; resize(); }
     document.body.classList.remove('ar', 'aiming'); model.visible = true; markers.visible = true; resetModelTransform();
     ptA = store.get('A', null); ptB = store.get('B', null); refreshPoints();
     $('stTitle').textContent = 'Vorschau'; $('stText').textContent = '';
@@ -718,7 +722,7 @@ function arTick(t, frame) {
     const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
     const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
     const gl3 = renderer.getContext(), tech = (ovl ? 'Overlay' : 'XR') + ' · Pose ' + (ovl ? (ovlStat.poses ? 'ok' : 'FEHLT') : 'n/a') + ' · Draws ' + renderer.info.render.calls + ' · Canvas ' + gl3.drawingBufferWidth + '×' + gl3.drawingBufferHeight + (gl3.isContextLost() ? ' · GL VERLOREN' : '');
-    $('diag').textContent = DEBUG ? 'v17 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + ' · ' + tech + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
+    $('diag').textContent = DEBUG ? 'v18 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + ' · ' + tech + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
   }
 }
 // ---------- Tisch-Modus: Kamerabild + Gerätelage, ohne WebXR ----------
@@ -747,7 +751,7 @@ async function startTable() {
 function stopTable() {
   removeEventListener('deviceorientation', onOri); if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null; $('cam').srcObject = null;
   inTab = false; document.body.classList.remove('ar', 'tab', 'aiming'); bs = 1; resetModelTransform(); camera.fov = 55; camera.updateProjectionMatrix();
-  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 17'; refreshPoints();
+  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 18'; refreshPoints();
 }
 $('btnTable').onclick = startTable;
 $('btnQuick').onclick = () => startAR(true);
@@ -783,7 +787,7 @@ renderer.setAnimationLoop((t, frame) => {
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 17'; $('chkOvl').checked = store.get('ovl', true);
+$('diag').textContent = 'Version 18'; $('chkOvl').checked = store.get('ovl', true);
 </script>
 </body>
 </html>
