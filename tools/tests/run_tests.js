@@ -137,6 +137,26 @@ const near = (a, b, eps = 1e-3) => Math.abs(a - b) < eps;
       document.querySelector('[data-gm="move"]').click(); return r;
     });
     ok(rot1.on && Math.abs(rot1.dyaw + Math.PI / 2) < 1e-3 && rot1.mitte < 1e-3, 'Drehmodus: 1 Finger um 90° um die Mitte geführt → Modell 90° gedreht, Mitte bleibt ' + JSON.stringify({ dyaw: +rot1.dyaw.toFixed(3) }));
+    // Zweiter Finger nur in der Eingabeliste (so meldet ihn Chrome), Regler, Fixieren
+    const more = await p.evaluate(() => {
+      const y0 = align.a.y + align.adj.y, M = modelCenter();
+      const frameOf = () => ({ getPose: s => ({ transform: { matrix: new Float32Array([1,0,0,0, 0,0,-1,0, 0,1,0,0, s.x, y0 + 1, s.z, 1]) } }) });
+      const C = () => new THREE.Vector3(bcen.x, 0, bcen.z).applyMatrix4(model.matrixWorld);
+      const a = { targetRayMode: 'screen', targetRaySpace: { x: M.x - 0.1, z: M.z } }, b = { targetRayMode: 'screen', targetRaySpace: { x: M.x + 0.1, z: M.z } };
+      xrTouch.clear(); xrTouch.add(a); xrG = null; const yaw0 = align.yaw;
+      xrGestureTick(frameOf(), [a, b]); a.targetRaySpace = { x: M.x, z: M.z - 0.1 }; b.targetRaySpace = { x: M.x, z: M.z + 0.1 }; xrGestureTick(frameOf(), [a, b]);
+      const twoFinger = align.yaw - yaw0; xrTouch.clear(); xrG = null;
+      const s = document.getElementById('slRot'); s.value = 45; s.dispatchEvent(new Event('input')); const slider = align.yaw * 180 / Math.PI;
+      document.getElementById('btnLock').click(); const c0 = C(), y1 = align.yaw;
+      xrTouch.add(a); xrGestureTick(frameOf(), [a]); a.targetRaySpace = { x: M.x + 0.5, z: M.z }; xrGestureTick(frameOf(), [a]); xrTouch.clear();
+      document.querySelector('[data-n="right"]').click(); document.querySelector('[data-n="cw"]').click();
+      const lockedMoved = C().distanceTo(c0) + Math.abs(align.yaw - y1), hidden = document.getElementById('padRow').classList.contains('hide') && document.getElementById('rotRow').classList.contains('hide');
+      document.getElementById('btnLock').click(); const unlocked = !document.getElementById('padRow').classList.contains('hide');
+      return { twoFinger, slider, lockedMoved, hidden, unlocked };
+    });
+    ok(Math.abs(Math.abs(more.twoFinger) - Math.PI / 2) < 1e-3, 'Zweiter Finger aus der Eingabeliste: 2-Finger-Drehung um 90° erkannt');
+    ok(Math.abs(more.slider - 45) < 1e-6, 'Dreh-Regler auf 45° → Modell 45° gedreht');
+    ok(more.lockedMoved < 1e-9 && more.hidden && more.unlocked, 'Fixieren: Gesten, Pfeile und Drehen gesperrt, Stellelemente ausgeblendet; Lösen gibt frei');
     // Mehrfach starten/beenden: genau EIN Hilfskontext, Zeichenkontext bleibt intakt, Preview zeichnet wieder
     const multi = [];
     for (let i = 0; i < 4; i++) {

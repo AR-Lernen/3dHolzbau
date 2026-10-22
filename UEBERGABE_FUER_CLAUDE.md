@@ -138,7 +138,8 @@ angepasst werden (siehe 7).
 10. **Gesten in AR über WebXR-Eingaben**, nicht über DOM-Touch-Ereignisse: Während einer AR-Sitzung kommen Berührungen auf dem Handy
     als WebXR-Bildschirmeingabe (`selectstart`/`selectend`, `targetRayMode === 'screen'`); deren `targetRaySpace` liefert pro Frame einen
     Strahl durch den Finger. DOM-Touch bleibt nur Ersatz. Auf Bedienelementen `beforexrselect` mit `preventDefault()` abfangen.
-    Chrome liefert dabei meist **nur einen Finger** – deshalb gibt es den Umschalter „Verschieben | Drehen“ für Ein-Finger-Drehen.
+    Chrome meldet `selectstart` nur für den **ersten** Finger; weitere Finger stehen nur in `session.inputSources` (`targetRayMode === 'screen'`) –
+    dort mitlesen. Zusätzlich gibt es Ein-Finger-Drehen (Umschalter), einen Dreh-Regler und „Fixieren“ (sperrt alle Änderungen).
 11. Reihenfolge der Dateien im Repo: `index.html` im Wurzelverzeichnis (Pages), `tools/` daneben.
 
 ## 7. Wenn das neue Modell nicht ins Schema passt

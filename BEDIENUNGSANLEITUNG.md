@@ -72,7 +72,10 @@ Mit *1:25* wird es größer.
 
 **Gesten** (im Schnellstart und beim AR-Tisch): Mit dem Umschalter **Finger: ✋ Verschieben | ⟳ Drehen** wählst du, was ein Finger tut.
 *Verschieben*: Finger auf dem Bild ziehen, das Modell folgt. *Drehen*: Finger um das Modell herumführen, es dreht sich mit.
-Auf Geräten, die zwei Finger an AR weitergeben, dreht auch die Zwei-Finger-Geste. Für kleine Korrekturen gibt es weiterhin Pfeile und **↺ ↻**.
+Auch zwei Finger drehen das Modell. Sicher funktioniert immer der Regler **Drehung** (−180° … 180°); für kleine Korrekturen gibt es Pfeile und **↺ ↻**.
+
+**🔒 Fixieren:** Steht das Modell richtig, tippe *Fixieren*. Danach lässt es sich weder verschieben noch drehen, und die Stellelemente verschwinden.
+**🔓 Lösen** gibt es wieder frei.
 Nach dem *Exakt einpassen* sind die Gesten gesperrt, damit das eingemessene Modell nicht verrutscht.
 
 **Menü einklappen:** Oben rechts **„Menü ▾“** blendet die Bedienelemente aus, damit nur das Modell zu sehen ist;

@@ -130,12 +130,13 @@
       <div id="arAdj" class="hide">
         <div class="row" id="scaleRow" style="margin-bottom:8px"><span style="color:var(--mut)">Maßstab</span><button class="sm" data-sc="1">1:1</button><button class="sm" data-sc="0.04">1:25</button><button class="sm" data-sc="0.02">1:50</button><button class="sm" id="scM">−5 %</button><button class="sm" id="scP">+5 %</button></div>
         <div class="row" id="gestRow" style="margin-bottom:8px"><span style="color:var(--mut)">Finger</span><button class="sm flex1" data-gm="move">✋ Verschieben</button><button class="sm flex1" data-gm="rot">⟳ Drehen</button></div>
-        <div class="row" style="margin-bottom:8px">
+        <div class="sl" id="rotRow" style="margin-bottom:8px"><span>Drehung</span><input id="slRot" type="range" min="-180" max="180" step="1" value="0"><span id="vRot">0°</span></div>
+        <div class="row" id="placeRow" style="margin-bottom:8px">
           <button id="btnFront" class="flex1">Modell vor mich setzen</button>
           <button id="btnPlace" class="flex1">Auf Fläche setzen</button>
           <button id="btnRealign" class="flex1">Exakt einpassen</button>
         </div>
-        <div class="row" style="justify-content:space-between;align-items:center">
+        <div class="row" id="padRow" style="justify-content:space-between;align-items:center">
           <div class="pad">
             <span></span><button data-n="fwd">▲</button><span></span>
             <button data-n="left">◀</button><button id="btnStep" class="sm">1 cm</button><button data-n="right">▶</button>
@@ -150,6 +151,7 @@
         </div>
         <div class="row" style="margin-top:8px">
           <label class="chk" id="lblScale"><input id="chkScale" type="checkbox"> Maßstab aus Punkten</label>
+          <button id="btnLock" class="sm">🔒 Fixieren</button>
           <button id="btnExit" class="sm">Beenden</button>
         </div>
       </div>
@@ -547,12 +549,16 @@ function arText() {
     $('btnSet').textContent = BTN[stage];
   } else if (stage === 'free' && aimOn) {
     $('stTitle').textContent = tablePending ? 'AR-Tisch 1:50' : 'Fläche anzielen'; $('stText').textContent = (tablePending ? 'Handy langsam über den Tisch bewegen, bis der weiße Ring erscheint. ' : 'Weißen Ring auf den Boden oder Tisch richten. ') + 'Dann „Hier absetzen“ – das Modell bleibt dort stehen.'; $('btnSet').textContent = '';
-  } else { $('stTitle').textContent = stage === 'free' ? 'Schnellstart · Maßstab 1:' + Math.round(1 / bs) : TXT[stage][0]; $('stText').textContent = TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
+  } else { $('stTitle').textContent = stage === 'free' ? 'Schnellstart · Maßstab 1:' + Math.round(1 / bs) : TXT[stage][0]; $('stText').textContent = stage === 'free' && locked ? 'Modell fixiert – Gesten und Stellelemente sind gesperrt. Zum Ändern „Lösen“ tippen.' : TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
   const adj = stage === 'free' || stage === 'done';
   $('arSet').classList.toggle('hide', adj || stage === 'wall'); $('arAdj').classList.toggle('hide', !adj);
   $('wallPanel').classList.toggle('hide', stage !== 'wall'); $('arPanel').classList.toggle('hide', stage === 'wall');
   $('planMini').classList.toggle('hide', !(refWall && (stage === 'rA' || stage === 'rB'))); if (refWall && (stage === 'rA' || stage === 'rB')) renderPlans();
-  $('btnPlace').classList.toggle('hide', stage !== 'free'); $('btnFront').classList.toggle('hide', stage !== 'free'); $('scaleRow').classList.toggle('hide', stage !== 'free'); $('gestRow').classList.toggle('hide', stage !== 'free');
+   $('scaleRow').classList.toggle('hide', stage !== 'free' || locked); $('gestRow').classList.toggle('hide', stage !== 'free' || locked);
+  $('rotRow').classList.toggle('hide', stage !== 'free' || locked); $('padRow').classList.toggle('hide', locked);
+  $('btnFront').classList.toggle('hide', stage !== 'free' || locked); $('btnPlace').classList.toggle('hide', stage !== 'free' || locked);
+  $('btnLock').textContent = locked ? '🔓 Lösen' : '🔒 Fixieren'; $('btnLock').classList.toggle('pri', locked);
+  { const deg = Math.round(((align.yaw * 180 / Math.PI) % 360 + 540) % 360 - 180); $('slRot').value = deg; $('vRot').textContent = deg + '°'; }
   for (const b of $('gestRow').querySelectorAll('button')) b.classList.toggle('on', b.dataset.gm === gestMode); 
   for (const b of $('scaleRow').querySelectorAll('button')) b.classList.toggle('on', Math.abs(+b.dataset.sc - bs) < 1e-6); $('lblScale').classList.toggle('hide', stage !== 'done');
   $('btnRealign').textContent = stage === 'free' ? 'Exakt einpassen' : 'Neu einpassen';
@@ -629,10 +635,12 @@ $('scaleRow').addEventListener('click', e => {
   arText();
 });
 $('btnExit').onclick = () => xrSession && xrSession.end();
+$('btnLock').onclick = () => { locked = !locked; xrG = null; g0 = null; arText(); flash(locked ? 'Modell fixiert – Verschieben und Drehen gesperrt.' : 'Modell wieder beweglich.'); };
+$('slRot').oninput = () => { if (locked) return; align.yaw = +$('slRot').value * Math.PI / 180; $('vRot').textContent = $('slRot').value + '°'; applyAlignment(); };
 $('chkScale').onchange = e => { align.useScale = e.target.checked; applyAlignment(); arText(); };
 $('btnStep').onclick = () => { const s = [0.01, 0.05, 0.002]; align.step = s[(s.indexOf(align.step) + 1) % s.length]; $('btnStep').textContent = (align.step * 100).toString().replace('.', ',') + ' cm'; };
 $('arAdj').addEventListener('click', e => {
-  const k = e.target.dataset && e.target.dataset.n; if (!k) return;
+  const k = e.target.dataset && e.target.dataset.n; if (!k || locked) return;
   const cam = getCam(); const fw = new THREE.Vector3(); cam.getWorldDirection(fw); fw.y = 0;
   if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize(); const rt = new THREE.Vector3().crossVectors(fw, YAX);
   const st = stage === 'free' ? align.step * 5 : align.step, dyaw = (align.step >= 0.05 ? 1 : align.step <= 0.002 ? 0.1 : 0.3) * Math.PI / 180 * (stage === 'free' ? 5 : 1);
@@ -688,7 +696,7 @@ async function startAR(quick, table) {
   inAR = true; document.body.classList.add('ar'); scene.background = null;
   bs = 1; resetModelTransform(); align.mode = 'free'; align.b = null; align.adj.set(0, 0, 0); align.yaw = 0; align.a = new THREE.Vector3();
   model.visible = true; markers.visible = true; needPlace = true;     // Position folgt im ersten Frame (Standort des Nutzers)
-  setMenu(false); tablePending = !!table;
+  setMenu(false); tablePending = !!table; locked = false;
   if (table) { bs = 0.02; model.visible = false; aimOn = true; lastAimT = performance.now(); }
   if (quick) { stage = 'free'; arText(); } else { align.mode = 'fix'; startFit(false); }
   if (ovl) { resize(); xrSession.requestAnimationFrame(ovlFrame); }
@@ -724,13 +732,14 @@ function arTick(t, frame) {
     const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
     const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
     const gl3 = renderer.getContext(), tech = (ovl ? 'Overlay' : 'XR') + ' · Pose ' + (ovl ? (ovlStat.poses ? 'ok' : 'FEHLT') : 'n/a') + ' · Draws ' + renderer.info.render.calls + ' · Canvas ' + gl3.drawingBufferWidth + '×' + gl3.drawingBufferHeight + (gl3.isContextLost() ? ' · GL VERLOREN' : '');
-    $('diag').textContent = DEBUG ? 'v22 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
+    $('diag').textContent = DEBUG ? 'v23 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
   }
 }
 // ---------- Gesten: 1 Finger verschieben, 2 Finger drehen (nur freier Modus) ----------
 // Hauptweg: WebXR-Bildschirmeingaben (jede Berührung liefert einen Strahl von der Kamera durch den Finger).
 // Ersatzweg: normale Touch-Ereignisse auf der Bildfläche – nur, solange keine WebXR-Eingabe kam.
-const gestOK = () => inAR && stage === 'free' && !aimOn && !!align.a;
+let locked = false;                                          // „Fixieren“: keine Gesten, keine Stellelemente
+const gestOK = () => inAR && stage === 'free' && !aimOn && !locked && !!align.a;
 const footPlane = () => new THREE.Plane(YAX, -(align.a.y + align.adj.y));      // waagerechte Ebene auf Höhe des Modellfußes
 function hitFoot(origin, dir) {
   const p = new THREE.Vector3(); if (!new THREE.Ray(origin, dir).intersectPlane(footPlane(), p) || p.distanceTo(origin) > 40) return null; return p;
@@ -753,10 +762,13 @@ function applyGesture(pts, prev) {                           // pts: Bodenpunkte
 }
 // WebXR-Weg
 const xrTouch = new Set(); let xrG = null, xrGest = false;
-function xrGestureTick(frame) {
+function xrGestureTick(frame, sources = xrSession ? xrSession.inputSources : []) {
   if (!xrTouch.size || !gestOK()) { xrG = null; return; }
+  // Erster Finger kommt über selectstart (nur auf der Bildfläche). Chrome meldet weitere Finger nur in der Eingabeliste.
+  const list = [...xrTouch];
+  for (const s of sources) if (list.length < 2 && s.targetRayMode === 'screen' && !xrTouch.has(s)) list.push(s);
   const pts = [];
-  for (const src of xrTouch) {
+  for (const src of list) {
     const pose = frame.getPose(src.targetRaySpace, refSpace()); if (!pose) { xrG = null; return; }
     const m = pose.transform.matrix, o = new THREE.Vector3(m[12], m[13], m[14]), d = new THREE.Vector3(-m[8], -m[9], -m[10]).normalize();
     const p = hitFoot(o, d); if (!p) { xrG = null; return; } pts.push(p);
@@ -830,7 +842,7 @@ renderer.setAnimationLoop((t, frame) => {
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 22'; $('chkOvl').checked = store.get('ovl', true);
+$('diag').textContent = 'Version 23'; $('chkOvl').checked = store.get('ovl', true);
 </script>
 </body>
 </html>
