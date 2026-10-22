@@ -2,6 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Holzbau AR</title>
 <style>
@@ -52,8 +53,8 @@
 </head>
 <body>
 <canvas id="gl"></canvas>
-<div id="cross"></div>
 <div id="ui">
+  <div id="cross"></div>
   <div id="top">
     <div id="status" class="panel"><b id="stTitle">Vorschau</b><small id="stText"></small><small id="diag" style="font-size:12px"></small></div>
     <button id="btnLay" class="sm">Ebenen</button>
@@ -518,13 +519,14 @@ renderer.setAnimationLoop((t, frame) => {
     updateAim();
     if (t - lastDiag > 500) {
       lastDiag = t; const c = renderer.xr.getCamera().position, mp = new THREE.Vector3(bcen.x, 0, bcen.z).applyMatrix4(model.matrixWorld);
-      $('diag').textContent = 'Fläche: ' + (hitPose ? 'erkannt' : 'KEINE (Handy langsam bewegen, gutes Licht)') + ' · Modell ' + (Math.hypot(mp.x - c.x, mp.z - c.z)).toFixed(1) + ' m entfernt';
+      $('diag').textContent = 'v5 · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE (Handy langsam bewegen, gutes Licht)') + ' · Modell ' + (Math.hypot(mp.x - c.x, mp.z - c.z)).toFixed(1) + ' m entfernt';
     }
   }
   renderer.render(scene, camera);
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
+$('diag').textContent = 'Version 5';
 </script>
 </body>
 </html>
