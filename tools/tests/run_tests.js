@@ -55,19 +55,6 @@ const near = (a, b, eps = 1e-3) => Math.abs(a - b) < eps;
     await ctx.close();
   }
 
-  // ---------- 2. Tisch-Modus ----------
-  {
-    const ctx = await browser.newContext({ viewport: { width: 400, height: 800 }, permissions: ['camera'] }), p = await ctx.newPage();
-    p.on('pageerror', e => errors.push(e.message));
-    await p.goto('file://' + file); await p.waitForTimeout(2500);
-    await p.click('#btnTable'); await p.waitForTimeout(600);
-    await p.evaluate(() => dispatchEvent(Object.assign(new Event('deviceorientation'), { alpha: 10, beta: 60, gamma: 0 })));
-    await p.waitForTimeout(500);
-    const t = await p.evaluate(() => ({ inTab, s: model.scale.x, msg: document.getElementById('msg').textContent }));
-    ok(t.inTab && near(t.s, 0.02), 'Tisch-Modus startet im Maßstab 1:50 ' + JSON.stringify(t));
-    await ctx.close();
-  }
-
   // ---------- 3. AR-Ablauf mit simuliertem WebXR (IWER) ----------
   let iwer = process.env.IWER_JS;
   if (!iwer) { try { iwer = require.resolve('iwer/build/iwer.min.js'); } catch (e) {} }
@@ -121,8 +108,22 @@ const near = (a, b, eps = 1e-3) => Math.abs(a - b) < eps;
       ev('pointerup', 1, 150, 720); ev('pointerup', 2, 250, 800); const c2 = C();
       return { dx: c1.x - c0.x, dz: c1.z - c0.z, dyaw: align.yaw - y0, centerShift: c2.distanceTo(c1) };
     });
-    ok(ges.dx > 0 && Math.abs(ges.dz) < Math.abs(ges.dx), '1 Finger nach rechts → Modell wandert nach rechts ' + JSON.stringify({ dx: +ges.dx.toFixed(3), dz: +ges.dz.toFixed(3) }));
-    ok(ges.dyaw < 0 && ges.centerShift < 0.02, '2 Finger im Uhrzeigersinn → Drehung im Uhrzeigersinn um die Modellmitte ' + JSON.stringify({ dyaw: +ges.dyaw.toFixed(3), mitte: +ges.centerShift.toFixed(4) }));
+    ok(ges.dx > 0 && Math.abs(ges.dz) < Math.abs(ges.dx), '(Ersatzweg Touch) 1 Finger nach rechts → Modell wandert nach rechts ' + JSON.stringify({ dx: +ges.dx.toFixed(3), dz: +ges.dz.toFixed(3) }));
+    ok(ges.dyaw < 0 && ges.centerShift < 0.06, '(Ersatzweg Touch) 2 Finger im Uhrzeigersinn → Drehung im Uhrzeigersinn, Mitte folgt dem Bodenpunkt zwischen den Fingern ' + JSON.stringify({ dyaw: +ges.dyaw.toFixed(3), mitte: +ges.centerShift.toFixed(4) }));
+    // Gesten über WebXR-Eingaben (Hauptweg auf dem Handy): simulierte Fingerstrahlen von oben auf die Tischebene
+    const xg = await p.evaluate(() => {
+      const ray = (x, z) => ({ targetRaySpace: { x, z } }), y0 = align.a.y + align.adj.y;
+      // Strahl senkrecht nach unten: Pose-Matrix mit -Z = (0,-1,0)  → Spalte 2 = (0,1,0)
+      const frameOf = () => ({ getPose: s => ({ transform: { matrix: new Float32Array([1,0,0,0, 0,0,-1,0, 0,1,0,0, s.x, y0 + 1, s.z, 1]) } }) });
+      const C = () => new THREE.Vector3(bcen.x, 0, bcen.z).applyMatrix4(model.matrixWorld);
+      const f1 = ray(0, 0); xrTouch.clear(); xrTouch.add(f1); xrG = null;
+      const c0 = C(); xrGestureTick(frameOf()); f1.targetRaySpace = { x: 0.1, z: 0 }; xrGestureTick(frameOf()); const c1 = C();
+      xrTouch.clear(); const a = ray(-0.1, 0), b = ray(0.1, 0); xrTouch.add(a); xrTouch.add(b); xrG = null; const y1 = align.yaw;
+      xrGestureTick(frameOf()); a.targetRaySpace = { x: 0, z: -0.1 }; b.targetRaySpace = { x: 0, z: 0.1 }; xrGestureTick(frameOf()); const c2 = C();
+      xrTouch.clear(); xrG = null;
+      return { dx: c1.x - c0.x, dyaw: align.yaw - y1, mitte: c2.distanceTo(c1) };
+    });
+    ok(Math.abs(xg.dx - 0.1) < 1e-3 && Math.abs(Math.abs(xg.dyaw) - Math.PI / 2) < 1e-3 && xg.mitte < 1e-3, 'WebXR-Gesten: 10 cm ziehen → 10 cm verschoben, Finger 90° gedreht → Modell 90° um die Mitte ' + JSON.stringify({ dx: +xg.dx.toFixed(4), dyaw: +xg.dyaw.toFixed(3) }));
     // Mehrfach starten/beenden: genau EIN Hilfskontext, Zeichenkontext bleibt intakt, Preview zeichnet wieder
     const multi = [];
     for (let i = 0; i < 4; i++) {

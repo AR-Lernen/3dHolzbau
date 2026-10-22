@@ -11,8 +11,6 @@
   html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:15px/1.35 system-ui,sans-serif; overflow:hidden; touch-action:none; }
   body.ar { background:transparent; }
   #ui > canvas#gl { pointer-events:none; }
-  video#cam { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; display:none; }
-  body.tab video#cam { display:block; }
   canvas#gl { position:fixed; inset:0; width:100%; height:100%; display:block; }
   #ui { position:fixed; inset:0; pointer-events:none; }
   #ui > * { pointer-events:auto; }
@@ -63,7 +61,6 @@
 </style>
 </head>
 <body>
-<video id="cam" playsinline muted autoplay></video>
 <canvas id="gl"></canvas>
 <div id="ui">
   <div id="touch" class="arOnly"></div>
@@ -98,8 +95,7 @@
     <div id="pvPanel" class="panel previewOnly">
       <button id="btnQuick" class="pri" style="width:100%;margin-bottom:8px" disabled>Schnellstart: Modell 1:1 in AR ansehen</button>
       <label class="chk" style="margin-bottom:8px"><input id="chkOvl" type="checkbox" checked> Kompatibilitätsmodus: Modell im Overlay zeichnen</label>
-      <button id="btnARTable" style="width:100%;margin-bottom:8px" disabled>AR-Tisch 1:50 – fest auf dem Tisch</button>
-      <button id="btnTable" style="width:100%;margin-bottom:10px">Tisch-Modus ohne AR (nur Handylage, nicht fixiert)</button>
+      <button id="btnARTable" style="width:100%;margin-bottom:10px" disabled>AR-Tisch 1:50 – fest auf dem Tisch</button>
       <div class="hd" style="margin-top:0">Referenzwand am Altbau (empfohlen)</div>
       <div class="row" id="pvWalls"></div>
       <div id="planPv" style="display:flex;justify-content:center;margin:6px 0"></div>
@@ -436,7 +432,7 @@ function applyOrbit() {
 const ptrs = new Map(); let tapStart = null, lastPinch = 0, lastMid = null;
 const cvs = $('gl');
 cvs.addEventListener('pointerdown', e => {
-  if (inAR || inTab) return; cvs.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (inAR) return; cvs.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   tapStart = ptrs.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
   lastPinch = 0; lastMid = null;
 });
@@ -465,7 +461,7 @@ const endPtr = e => {
   ptrs.delete(e.pointerId); tapStart = null; lastPinch = 0; lastMid = null;
 };
 cvs.addEventListener('pointerup', endPtr); cvs.addEventListener('pointercancel', endPtr);
-cvs.addEventListener('wheel', e => { if (inAR || inTab) return; e.preventDefault(); orb.r = Math.max(0.5, Math.min(120, orb.r * Math.exp(e.deltaY * 0.001))); }, { passive: false });
+cvs.addEventListener('wheel', e => { if (inAR) return; e.preventDefault(); orb.r = Math.max(0.5, Math.min(120, orb.r * Math.exp(e.deltaY * 0.001))); }, { passive: false });
 cvs.addEventListener('contextmenu', e => e.preventDefault());
 
 const ray = new THREE.Raycaster();
@@ -555,20 +551,20 @@ function arText() {
     $('stTitle').textContent = 'Punkt ' + (stage === 'rA' ? 'A' : 'B') + ' · ' + w.name;
     $('stText').innerHTML = c.label + ' – Außenecke am Boden (Wandfuß).<small>Von außen auf die ' + w.name + ' gesehen ist A die linke, B die rechte Ecke.</small>';
     $('btnSet').textContent = BTN[stage];
-  } else if (stage === 'free' && aimOn && !inTab) {
+  } else if (stage === 'free' && aimOn) {
     $('stTitle').textContent = tablePending ? 'AR-Tisch 1:50' : 'Fläche anzielen'; $('stText').textContent = (tablePending ? 'Handy langsam über den Tisch bewegen, bis der weiße Ring erscheint. ' : 'Weißen Ring auf den Boden oder Tisch richten. ') + 'Dann „Hier absetzen“ – das Modell bleibt dort stehen.'; $('btnSet').textContent = '';
-  } else { $('stTitle').textContent = inTab ? 'Tisch-Modus' : stage === 'free' ? 'Schnellstart · Maßstab 1:' + Math.round(1 / bs) : TXT[stage][0]; $('stText').textContent = inTab ? 'Modell steht vor dir (Kamerabild + Handylage, kein Positions-Tracking). 1 Finger verschiebt, 2 Finger drehen.' : TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
+  } else { $('stTitle').textContent = stage === 'free' ? 'Schnellstart · Maßstab 1:' + Math.round(1 / bs) : TXT[stage][0]; $('stText').textContent = TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
   const adj = stage === 'free' || stage === 'done';
   $('arSet').classList.toggle('hide', adj || stage === 'wall'); $('arAdj').classList.toggle('hide', !adj);
   $('wallPanel').classList.toggle('hide', stage !== 'wall'); $('arPanel').classList.toggle('hide', stage === 'wall');
   $('planMini').classList.toggle('hide', !(refWall && (stage === 'rA' || stage === 'rB'))); if (refWall && (stage === 'rA' || stage === 'rB')) renderPlans();
-  $('btnPlace').classList.toggle('hide', stage !== 'free' || inTab); $('btnFront').classList.toggle('hide', stage !== 'free'); $('scaleRow').classList.toggle('hide', stage !== 'free'); $('btnRealign').classList.toggle('hide', inTab);
+  $('btnPlace').classList.toggle('hide', stage !== 'free'); $('btnFront').classList.toggle('hide', stage !== 'free'); $('scaleRow').classList.toggle('hide', stage !== 'free'); 
   for (const b of $('scaleRow').querySelectorAll('button')) b.classList.toggle('on', Math.abs(+b.dataset.sc - bs) < 1e-6); $('lblScale').classList.toggle('hide', stage !== 'done');
   $('btnRealign').textContent = stage === 'free' ? 'Exakt einpassen' : 'Neu einpassen';
   const showAim = (stage !== 'free' && stage !== 'done' && stage !== 'wall') || aimOn;
   document.body.classList.toggle('aiming', showAim);
   $('btnPlace').textContent = aimOn ? 'Hier absetzen' : 'Auf Fläche setzen'; $('btnPlace').classList.toggle('pri', aimOn);
-  beacon.visible = DEBUG && (inAR || inTab) && stage === 'free'; testCube.visible = DEBUG && inAR;
+  beacon.visible = DEBUG && inAR && stage === 'free'; testCube.visible = DEBUG && inAR;
   $('btnSet').disabled = (stage === 'mA' || stage === 'mB') && !aimPt;
   reticle.visible = (stage === 'rA' || stage === 'rB' || (stage === 'free' && aimOn)) && !!hitPose;
   aimMark.visible = (stage === 'mA' || stage === 'mB') && !!aimPt;
@@ -637,7 +633,7 @@ $('scaleRow').addEventListener('click', e => {
   if (bs < 1) placeFront(); else { const c = new THREE.Vector3(); getCam().getWorldPosition(c); align.a = new THREE.Vector3(c.x, 0, c.z); align.adj.set(0, 0, 0); applyAlignment(); }
   arText();
 });
-$('btnExit').onclick = () => inTab ? stopTable() : (xrSession && xrSession.end());
+$('btnExit').onclick = () => xrSession && xrSession.end();
 $('chkScale').onchange = e => { align.useScale = e.target.checked; applyAlignment(); arText(); };
 $('btnStep').onclick = () => { const s = [0.01, 0.05, 0.002]; align.step = s[(s.indexOf(align.step) + 1) % s.length]; $('btnStep').textContent = (align.step * 100).toString().replace('.', ',') + ' cm'; };
 $('arAdj').addEventListener('click', e => {
@@ -691,6 +687,7 @@ async function startAR(quick, table) {
     renderer.xr.setReferenceSpaceType('local-floor');
     await renderer.xr.setSession(xrSession);
   }
+  bindXrGestures(xrSession); tp.clear();
   const viewer = await xrSession.requestReferenceSpace('viewer');
   hitSource = await xrSession.requestHitTestSource({ space: viewer });
   inAR = true; document.body.classList.add('ar'); scene.background = null;
@@ -723,6 +720,7 @@ function arTick(t, frame) {
       reticle.visible = stage === 'rA' || stage === 'rB' || (stage === 'free' && aimOn);
     } else { hitPose = null; reticle.visible = false; }
   }
+  xrGestureTick(frame);
   updateAim();
   if (t - lastDiag > 500) {
     lastDiag = t; const cm = getCam(), c = cm.position, mp = new THREE.Vector3(bcen.x, 0, bcen.z).applyMatrix4(model.matrixWorld);
@@ -731,68 +729,68 @@ function arTick(t, frame) {
     const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
     const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
     const gl3 = renderer.getContext(), tech = (ovl ? 'Overlay' : 'XR') + ' · Pose ' + (ovl ? (ovlStat.poses ? 'ok' : 'FEHLT') : 'n/a') + ' · Draws ' + renderer.info.render.calls + ' · Canvas ' + gl3.drawingBufferWidth + '×' + gl3.drawingBufferHeight + (gl3.isContextLost() ? ' · GL VERLOREN' : '');
-    $('diag').textContent = DEBUG ? 'v20 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
+    $('diag').textContent = DEBUG ? 'v21 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
   }
 }
-// ---------- Tisch-Modus: Kamerabild + Gerätelage, ohne WebXR ----------
-let inTab = false, camStream = null;
-const dev = { a: 0, b: 0, g: 0, a0: null };
-const onOri = e => { if (e.alpha == null) return; dev.a = e.alpha; dev.b = e.beta; dev.g = e.gamma; if (dev.a0 == null) dev.a0 = e.alpha; };
-const _e = new THREE.Euler(), _q1 = new THREE.Quaternion(-Math.sqrt(.5), 0, 0, Math.sqrt(.5)), _q0 = new THREE.Quaternion(), _z = new THREE.Vector3(0, 0, 1);
-function deviceCam() {
-  if (dev.a0 == null) return; const D = Math.PI / 180, orient = ((screen.orientation && screen.orientation.angle) || 0) * D;
-  _e.set(dev.b * D, (dev.a - dev.a0) * D, -dev.g * D, 'YXZ'); camera.quaternion.setFromEuler(_e);
-  camera.quaternion.multiply(_q1); camera.quaternion.multiply(_q0.setFromAxisAngle(_z, -orient)); camera.position.set(0, 0, 0);
-}
-async function startTable() {
-  if (inTab || inAR) return;
-  try {
-    if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) { if (await DeviceOrientationEvent.requestPermission() !== 'granted') throw new Error('Bewegungssensoren nicht erlaubt'); }
-    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-  } catch (e) { flash('Tisch-Modus nicht möglich: ' + e.message); return; }
-  $('cam').srcObject = camStream; $('cam').play().catch(() => {});
-  addEventListener('deviceorientation', onOri); dev.a0 = null;
-  inTab = true; document.body.classList.add('ar', 'tab'); scene.background = null; camera.fov = 62; camera.updateProjectionMatrix();
-  resetModelTransform(); align.mode = 'free'; align.b = null; align.adj.set(0, 0, 0); align.yaw = 0; align.a = new THREE.Vector3(0, -0.6, -0.7);
-  bs = 0.02; model.visible = true; markers.visible = true; stage = 'free'; applyAlignment(); arText();
-  flash('Halte das Handy ruhig. Das Modell steht ca. 70 cm vor dir. Drehen des Handys = umschauen.');
-}
-function stopTable() {
-  removeEventListener('deviceorientation', onOri); if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null; $('cam').srcObject = null;
-  inTab = false; document.body.classList.remove('ar', 'tab', 'aiming'); bs = 1; resetModelTransform(); camera.fov = 55; camera.updateProjectionMatrix();
-  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 20'; refreshPoints();
-}
-$('btnTable').onclick = startTable;
 // ---------- Gesten: 1 Finger verschieben, 2 Finger drehen (nur freier Modus) ----------
-const tp = new Map(); let g0 = null;
-const gestOK = () => (inAR || inTab) && stage === 'free' && !aimOn && !!align.a;
-function groundPoint(x, y) {                                 // Bildschirmstrahl ∩ waagerechte Ebene auf Höhe des Modellfußes
-  const cam = getCam(); ray.setFromCamera(new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1), cam);
-  const p = new THREE.Vector3(), c = new THREE.Vector3(); cam.getWorldPosition(c);
-  if (!ray.ray.intersectPlane(new THREE.Plane(YAX, -(align.a.y + align.adj.y)), p) || p.distanceTo(c) > 40) return null;
-  return p;
+// Hauptweg: WebXR-Bildschirmeingaben (jede Berührung liefert einen Strahl von der Kamera durch den Finger).
+// Ersatzweg: normale Touch-Ereignisse auf der Bildfläche – nur, solange keine WebXR-Eingabe kam.
+const gestOK = () => inAR && stage === 'free' && !aimOn && !!align.a;
+const footPlane = () => new THREE.Plane(YAX, -(align.a.y + align.adj.y));      // waagerechte Ebene auf Höhe des Modellfußes
+function hitFoot(origin, dir) {
+  const p = new THREE.Vector3(); if (!new THREE.Ray(origin, dir).intersectPlane(footPlane(), p) || p.distanceTo(origin) > 40) return null; return p;
 }
-function gesture() {
-  const q = [...tp.values()];
-  if (q.length === 1) return { n: 1, gp: groundPoint(q[0].x, q[0].y) };
-  const [a, b] = q; return { n: 2, gp: groundPoint((a.x + b.x) / 2, (a.y + b.y) / 2), ang: Math.atan2(b.y - a.y, b.x - a.x) };
+const gestureOf = pts => pts.length === 1 ? { n: 1, gp: pts[0] } : { n: 2, gp: pts[0].clone().add(pts[1]).multiplyScalar(.5), ang: Math.atan2(pts[1].z - pts[0].z, pts[1].x - pts[0].x) };
+function applyGesture(pts, prev) {                           // pts: Bodenpunkte der Finger (Welt); gibt neuen Zustand zurück
+  const g = gestureOf(pts);
+  if (prev && prev.n === g.n) {
+    align.adj.add(g.gp.clone().sub(prev.gp).setY(0));
+    if (g.n === 2) { const d = g.ang - prev.ang; align.yaw -= Math.atan2(Math.sin(d), Math.cos(d)); }   // dreht genau mit den Fingern
+    applyAlignment();
+  }
+  return g;
+}
+// WebXR-Weg
+const xrTouch = new Set(); let xrG = null, xrGest = false;
+function xrGestureTick(frame) {
+  if (!xrTouch.size || !gestOK()) { xrG = null; return; }
+  const pts = [];
+  for (const src of xrTouch) {
+    const pose = frame.getPose(src.targetRaySpace, refSpace()); if (!pose) { xrG = null; return; }
+    const m = pose.transform.matrix, o = new THREE.Vector3(m[12], m[13], m[14]), d = new THREE.Vector3(-m[8], -m[9], -m[10]).normalize();
+    const p = hitFoot(o, d); if (!p) { xrG = null; return; } pts.push(p);
+    if (pts.length === 2) break;
+  }
+  xrG = applyGesture(pts, xrG);
+}
+function bindXrGestures(session) {
+  xrTouch.clear(); xrG = null; xrGest = false;
+  session.addEventListener('selectstart', e => { if (e.inputSource.targetRayMode === 'screen') { xrTouch.add(e.inputSource); xrGest = true; xrG = null; } });
+  session.addEventListener('selectend', e => { xrTouch.delete(e.inputSource); xrG = null; });
+}
+// Berührungen auf Bedienelementen sollen keine AR-Eingabe auslösen
+$('ui').addEventListener('beforexrselect', e => { if (e.target !== $('touch')) e.preventDefault(); });
+// Ersatzweg über Touch-Ereignisse
+const tp = new Map(); let g0 = null;
+function domPoints() {
+  const cam = getCam(), out = [];
+  for (const q of [...tp.values()].slice(0, 2)) {
+    ray.setFromCamera(new THREE.Vector2(q.x / innerWidth * 2 - 1, -(q.y / innerHeight) * 2 + 1), cam);
+    const p = hitFoot(ray.ray.origin, ray.ray.direction); if (!p) return null; out.push(p);
+  }
+  return out;
 }
 const touchEl = $('touch');
 touchEl.addEventListener('pointerdown', e => {
-  if (!gestOK() || tp.size >= 2) return; try { touchEl.setPointerCapture(e.pointerId); } catch (_) {}
-  tp.set(e.pointerId, { x: e.clientX, y: e.clientY }); g0 = gesture();
+  if (!gestOK() || xrGest) return; try { touchEl.setPointerCapture(e.pointerId); } catch (_) {}
+  tp.set(e.pointerId, { x: e.clientX, y: e.clientY }); const pts = domPoints(); g0 = pts ? gestureOf(pts) : null;
 });
 touchEl.addEventListener('pointermove', e => {
-  if (!tp.has(e.pointerId) || !gestOK()) return;
-  tp.set(e.pointerId, { x: e.clientX, y: e.clientY }); const g = gesture();
-  if (g0 && g.n === g0.n) {
-    if (g.gp && g0.gp) align.adj.add(g.gp.clone().sub(g0.gp).setY(0));
-    if (g.n === 2) { const d = g.ang - g0.ang; align.yaw -= Math.atan2(Math.sin(d), Math.cos(d)); }
-    applyAlignment();
-  }
-  g0 = gesture();
+  if (!tp.has(e.pointerId) || !gestOK() || xrGest) return;
+  tp.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const pts = domPoints(); g0 = pts ? applyGesture(pts, g0) : null;
 });
-const endTouch = e => { tp.delete(e.pointerId); g0 = tp.size ? gesture() : null; };
+const endTouch = e => { tp.delete(e.pointerId); const pts = tp.size && gestOK() ? domPoints() : null; g0 = pts ? gestureOf(pts) : null; };
 touchEl.addEventListener('pointerup', endTouch); touchEl.addEventListener('pointercancel', endTouch);
 
 $('btnQuick').onclick = () => startAR(true);
@@ -824,14 +822,13 @@ function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.asp
 addEventListener('resize', resize); resize();
 renderer.setAnimationLoop((t, frame) => {
   if (inAR && ovl) return;                                   // im Overlay-Modus zeichnet ovlFrame
-  if (inTab) { deviceCam(); updateAim(); if (t - lastDiag > 500) { lastDiag = t; $('diag').textContent = 'v11 Tisch-Modus · Lage ' + (dev.a0 == null ? 'KEINE Sensordaten' : 'ok') + ' · Maßstab 1:' + Math.round(1 / bs); } }
-  else if (!inAR) { applyOrbit(); }
+  if (!inAR) { applyOrbit(); }
   else if (frame) arTick(t, frame);
   renderer.render(scene, camera);
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 20'; $('chkOvl').checked = store.get('ovl', true);
+$('diag').textContent = 'Version 21'; $('chkOvl').checked = store.get('ovl', true);
 </script>
 </body>
 </html>

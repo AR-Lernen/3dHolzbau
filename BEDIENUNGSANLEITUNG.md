@@ -70,17 +70,12 @@ Button **„AR-Tisch 1:50 – fest auf dem Tisch“**: Das Handy langsam über d
 dann **„Hier absetzen“**. Das Modell steht danach fest auf dem Tisch – du kannst um den Tisch herumgehen.
 Mit *1:25* wird es größer.
 
-**Gesten** (im Schnellstart, beim AR-Tisch und im Tisch-Modus): **1 Finger** auf dem Bild verschiebt das Modell auf der Fläche,
+**Gesten** (im Schnellstart und beim AR-Tisch): **1 Finger** auf dem Bild verschiebt das Modell auf der Fläche,
 **2 Finger** drehen es um seine Mitte (Finger gegeneinander verdrehen). Für kleine Korrekturen gibt es weiterhin Pfeile und **↺ ↻**.
 Nach dem *Exakt einpassen* sind die Gesten gesperrt, damit das eingemessene Modell nicht verrutscht.
 
 **Menü einklappen:** Oben rechts **„Menü ▾“** blendet die Bedienelemente aus, damit nur das Modell zu sehen ist;
 **„Menü ▴“** holt sie zurück.
-
-## 5b. Tisch-Modus ohne AR (nicht fixiert)
-
-Button **„Tisch-Modus ohne AR“**: nur für Geräte ohne funktionierendes AR. Kamerabild plus Handylage, das Modell steht etwa 70 cm vor dir. Beim Neigen/Drehen schaust du um dich herum,
-**Gehen** verändert die Ansicht nicht (keine Positionserkennung). Für schnelle Präsentationen geeignet, nicht zum Ausrichten.
 
 ## 6. Hilfe bei Problemen
 

@@ -22,7 +22,7 @@ eine kurze Projekt-Konfiguration `tools/config/<projekt>.json`.
 - **Schnellstart:** AR im Maßstab 1:1 oder 1:25 / 1:50 (Tisch), frei platzierbar und feinjustierbar.
 - **Exakt einpassen:** Referenzwand des Bestands wählen (Anbauwand, Rückwand, Seitenwand links/rechts, mit Grundrisskarte),
   die zwei Außenecken (A, B) vor Ort anvisieren → das Modell sitzt maßgenau am Bestand. Anzeige der Abweichung in cm.
-- **Tisch-Modus:** Kamerabild + Kreisel (ohne WebXR), für Geräte, auf denen WebXR nicht darstellt.
+- **AR-Tisch 1:50:** Modell fest auf einer Tischfläche; Gesten: 1 Finger verschieben, 2 Finger drehen.
 - Fotorealistische Texturen aus dem Export (Holz längs/Hirnholz, Ziegel, OSB, Beton, Lehm …).
 
 ## 2. Ablauf in 7 Schritten
@@ -58,7 +58,7 @@ Python 3 mit: pip install numpy pillow          Node (nur für Tests): npm insta
    cd tools/tests && npm install playwright iwer && node run_tests.js ../../index.html
    ```
    Alle Zeilen müssen `OK` sein. Prüft: Ebenen/Texturen, vier Referenzwände, Maßstab 1:1 (1 m = 1,000 m), Zwei-Punkt-Ausrichtung,
-   Zielring (gezeichnete Pixel), Tisch-Modus, AR-Ablauf im simulierten WebXR, mehrfaches Starten/Beenden, keine JS-Fehler.
+   Zielring (gezeichnete Pixel), AR-Tisch, Gesten, AR-Ablauf im simulierten WebXR, mehrfaches Starten/Beenden, keine JS-Fehler.
    **Grenze:** Das simulierte WebXR ersetzt keinen Gerätetest – Kameradarstellung, ARCore-Tracking und Grafikspeicher nur auf dem Handy prüfbar. Eigene Sichtprüfung: Seite in Playwright öffnen, Screenshot
    ansehen (Ziegel sichtbar? Holz mit Maserung? Grundrisskarte plausibel, richtige Wand hervorgehoben?).
 6. **Veröffentlichen** (nur mit Zustimmung des Nutzers, siehe 6): `index.html` ins Repo, GitHub Pages aktivieren
@@ -111,7 +111,7 @@ angepasst werden (siehe 7).
 - UV-Berechnung: Holz = Hauptachsenanalyse (Faser = längste Achse), Fläche je nach Normale in eine der drei Ebenen projiziert;
   Wände = Weltachsen. Textur-ID steht in `materialRefs[4]` jedes Teilkörpers (Längs- und Hirnholz sind getrennte Teilkörper).
 - `tools/app_template.html`: eine Datei mit CSS/JS. Wichtige Bereiche: Laden, Ebenen-UI, Referenzwände, Fixpunkte,
-  Ausrichtung (`applyAlignment`), AR (`startAR`, `ovlFrame`, `arTick`), Tisch-Modus, Hauptschleife.
+  Ausrichtung (`applyAlignment`), AR (`startAR`, `ovlFrame`, `arTick`), Gesten, Hauptschleife.
 - **Ausrichtung:** Aus Modellpunkten A,B und Realpunkten a,b: Drehung um die Hochachse = Winkel(a→b) − Winkel(A→B),
   Verschiebung so, dass A auf a liegt; Maßstab nur wenn „Maßstab aus Punkten“ aktiv. Höhe von A wird auf die Höhe von a gesetzt.
 
@@ -135,7 +135,10 @@ angepasst werden (siehe 7).
    und verwirft bei Überschreitung den ältesten, also den Zeichenkontext. Im Overlay-Modus Pixeldichte auf 1,5 begrenzen (Grafikspeicher).
    Fehlt in einem Frame die Kamerapose, mit der letzten Pose weiterzeichnen. Die Statuszeile zeigt Modus, Pose, Draws, Canvasgröße und
    WebGL-Zustand – bei Problemen auf dem Gerät immer zuerst einen Screenshot davon anfordern.
-10. Reihenfolge der Dateien im Repo: `index.html` im Wurzelverzeichnis (Pages), `tools/` daneben.
+10. **Gesten in AR über WebXR-Eingaben**, nicht über DOM-Touch-Ereignisse: Während einer AR-Sitzung kommen Berührungen auf dem Handy
+    als WebXR-Bildschirmeingabe (`selectstart`/`selectend`, `targetRayMode === 'screen'`); deren `targetRaySpace` liefert pro Frame einen
+    Strahl durch den Finger. DOM-Touch bleibt nur Ersatz. Auf Bedienelementen `beforexrselect` mit `preventDefault()` abfangen.
+11. Reihenfolge der Dateien im Repo: `index.html` im Wurzelverzeichnis (Pages), `tools/` daneben.
 
 ## 7. Wenn das neue Modell nicht ins Schema passt
 
