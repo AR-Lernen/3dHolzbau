@@ -110,6 +110,19 @@ const near = (a, b, eps = 1e-3) => Math.abs(a - b) < eps;
     await p.evaluate(() => document.getElementById('btnPlace').click()); await p.waitForTimeout(400);
     const tb2 = await p.evaluate(() => ({ vis: model.visible, c: new THREE.Vector3(bcen.x, 0, bcen.z).applyMatrix4(model.matrixWorld).toArray(), h: hitPose && new THREE.Vector3().setFromMatrixPosition(hitPose).toArray() }));
     ok(!tb1.vis && tb1.aim && near(tb1.s, 0.02) && tb2.vis && tb2.h && tb2.c.every((v, i) => near(v, tb2.h[i])), 'AR-Tisch 1:50: zielen → absetzen → Modell steht an der Trefferstelle');
+    // Gesten auf dem abgesetzten Tischmodell
+    const ges = await p.evaluate(() => {
+      const el = document.getElementById('touch'), ev = (type, id, x, y) => el.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: y, bubbles: true }));
+      const C = () => new THREE.Vector3(bcen.x, 0, bcen.z).applyMatrix4(model.matrixWorld);
+      const c0 = C(); ev('pointerdown', 1, 200, 760); ev('pointermove', 1, 240, 760); ev('pointerup', 1, 240, 760); const c1 = C();
+      const y0 = align.yaw;
+      ev('pointerdown', 1, 150, 760); ev('pointerdown', 2, 250, 760);
+      ev('pointermove', 2, 250, 800); ev('pointermove', 1, 150, 720);     // Finger um den gemeinsamen Mittelpunkt im Uhrzeigersinn gedreht
+      ev('pointerup', 1, 150, 720); ev('pointerup', 2, 250, 800); const c2 = C();
+      return { dx: c1.x - c0.x, dz: c1.z - c0.z, dyaw: align.yaw - y0, centerShift: c2.distanceTo(c1) };
+    });
+    ok(ges.dx > 0 && Math.abs(ges.dz) < Math.abs(ges.dx), '1 Finger nach rechts → Modell wandert nach rechts ' + JSON.stringify({ dx: +ges.dx.toFixed(3), dz: +ges.dz.toFixed(3) }));
+    ok(ges.dyaw < 0 && ges.centerShift < 0.02, '2 Finger im Uhrzeigersinn → Drehung im Uhrzeigersinn um die Modellmitte ' + JSON.stringify({ dyaw: +ges.dyaw.toFixed(3), mitte: +ges.centerShift.toFixed(4) }));
     // Mehrfach starten/beenden: genau EIN Hilfskontext, Zeichenkontext bleibt intakt, Preview zeichnet wieder
     const multi = [];
     for (let i = 0; i < 4; i++) {

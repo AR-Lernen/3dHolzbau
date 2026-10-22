@@ -68,7 +68,11 @@ Der Holzbau wird am Bestand ausgerichtet. Dazu misst du zwei Außenecken des Alt
 
 Button **„AR-Tisch 1:50 – fest auf dem Tisch“**: Das Handy langsam über den Tisch bewegen, bis der weiße Ring erscheint,
 dann **„Hier absetzen“**. Das Modell steht danach fest auf dem Tisch – du kannst um den Tisch herumgehen.
-Mit *1:25* wird es größer, mit den Pfeilen und **↺ ↻** verschiebst und drehst du es.
+Mit *1:25* wird es größer.
+
+**Gesten** (im Schnellstart, beim AR-Tisch und im Tisch-Modus): **1 Finger** auf dem Bild verschiebt das Modell auf der Fläche,
+**2 Finger** drehen es um seine Mitte (Finger gegeneinander verdrehen). Für kleine Korrekturen gibt es weiterhin Pfeile und **↺ ↻**.
+Nach dem *Exakt einpassen* sind die Gesten gesperrt, damit das eingemessene Modell nicht verrutscht.
 
 **Menü einklappen:** Oben rechts **„Menü ▾“** blendet die Bedienelemente aus, damit nur das Modell zu sehen ist;
 **„Menü ▴“** holt sie zurück.

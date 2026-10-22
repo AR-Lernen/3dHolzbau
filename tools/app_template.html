@@ -16,6 +16,7 @@
   canvas#gl { position:fixed; inset:0; width:100%; height:100%; display:block; }
   #ui { position:fixed; inset:0; pointer-events:none; }
   #ui > * { pointer-events:auto; }
+  #touch { position:absolute; inset:0; touch-action:none; }
   .panel { background:var(--panel); border-radius:14px; padding:10px 12px; backdrop-filter:blur(6px); }
   #top { position:absolute; left:10px; right:10px; top:max(10px,env(safe-area-inset-top)); display:flex; gap:8px; align-items:flex-start; }
   #status { flex:1; min-width:0; }
@@ -65,6 +66,7 @@
 <video id="cam" playsinline muted autoplay></video>
 <canvas id="gl"></canvas>
 <div id="ui">
+  <div id="touch" class="arOnly"></div>
   <div id="cross"></div>
   <div id="top">
     <div id="status" class="panel"><div id="planMini" class="hide" style="float:right;margin:0 0 4px 8px"></div><b id="stTitle">Vorschau</b><small id="stText"></small><small id="diag" style="font-size:12px"></small></div>
@@ -528,7 +530,7 @@ fixA.scale.setScalar(.5); fixB.scale.setScalar(.5);
 })();
 
 const TXT = {
-  free: ['Schnellstart', 'Das Modell steht frei im Raum. „Vor mich setzen“ stellt es ein paar Meter vor dich, „Auf Fläche setzen“ auf den Ring (nur wenn ARCore eine Fläche erkennt).'],
+  free: ['Schnellstart', '1 Finger verschiebt das Modell, 2 Finger drehen es. „Vor mich setzen“ stellt es vor dich, „Auf Fläche setzen“ auf den Ring.'],
   mA: ['Modellpunkt A', 'Fadenkreuz auf eine Ecke im Modell richten (grüner Punkt rastet ein), dann setzen.'],
   mB: ['Modellpunkt B', 'Zweite Ecke im Modell anvisieren, möglichst weit von A entfernt.'],
   rA: ['Punkt A am Bau', 'Fadenkreuz genau auf den echten Punkt A halten, dann setzen.'],
@@ -548,7 +550,7 @@ function arText() {
     $('btnSet').textContent = BTN[stage];
   } else if (stage === 'free' && aimOn && !inTab) {
     $('stTitle').textContent = tablePending ? 'AR-Tisch 1:50' : 'Fläche anzielen'; $('stText').textContent = (tablePending ? 'Handy langsam über den Tisch bewegen, bis der weiße Ring erscheint. ' : 'Weißen Ring auf den Boden oder Tisch richten. ') + 'Dann „Hier absetzen“ – das Modell bleibt dort stehen.'; $('btnSet').textContent = '';
-  } else { $('stTitle').textContent = inTab ? 'Tisch-Modus' : stage === 'free' ? 'Schnellstart · Maßstab 1:' + Math.round(1 / bs) : TXT[stage][0]; $('stText').textContent = inTab ? 'Modell steht vor dir (Kamerabild + Handylage, kein Positions-Tracking). Maßstab wählen, mit den Pfeilen verschieben, ↺/↻ drehen.' : TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
+  } else { $('stTitle').textContent = inTab ? 'Tisch-Modus' : stage === 'free' ? 'Schnellstart · Maßstab 1:' + Math.round(1 / bs) : TXT[stage][0]; $('stText').textContent = inTab ? 'Modell steht vor dir (Kamerabild + Handylage, kein Positions-Tracking). 1 Finger verschiebt, 2 Finger drehen.' : TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
   const adj = stage === 'free' || stage === 'done';
   $('arSet').classList.toggle('hide', adj || stage === 'wall'); $('arAdj').classList.toggle('hide', !adj);
   $('wallPanel').classList.toggle('hide', stage !== 'wall'); $('arPanel').classList.toggle('hide', stage === 'wall');
@@ -722,7 +724,7 @@ function arTick(t, frame) {
     const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
     const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
     const gl3 = renderer.getContext(), tech = (ovl ? 'Overlay' : 'XR') + ' · Pose ' + (ovl ? (ovlStat.poses ? 'ok' : 'FEHLT') : 'n/a') + ' · Draws ' + renderer.info.render.calls + ' · Canvas ' + gl3.drawingBufferWidth + '×' + gl3.drawingBufferHeight + (gl3.isContextLost() ? ' · GL VERLOREN' : '');
-    $('diag').textContent = DEBUG ? 'v19 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
+    $('diag').textContent = DEBUG ? 'v20 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
   }
 }
 // ---------- Tisch-Modus: Kamerabild + Gerätelage, ohne WebXR ----------
@@ -751,9 +753,41 @@ async function startTable() {
 function stopTable() {
   removeEventListener('deviceorientation', onOri); if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null; $('cam').srcObject = null;
   inTab = false; document.body.classList.remove('ar', 'tab', 'aiming'); bs = 1; resetModelTransform(); camera.fov = 55; camera.updateProjectionMatrix();
-  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 19'; refreshPoints();
+  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 20'; refreshPoints();
 }
 $('btnTable').onclick = startTable;
+// ---------- Gesten: 1 Finger verschieben, 2 Finger drehen (nur freier Modus) ----------
+const tp = new Map(); let g0 = null;
+const gestOK = () => (inAR || inTab) && stage === 'free' && !aimOn && !!align.a;
+function groundPoint(x, y) {                                 // Bildschirmstrahl ∩ waagerechte Ebene auf Höhe des Modellfußes
+  const cam = getCam(); ray.setFromCamera(new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1), cam);
+  const p = new THREE.Vector3(), c = new THREE.Vector3(); cam.getWorldPosition(c);
+  if (!ray.ray.intersectPlane(new THREE.Plane(YAX, -(align.a.y + align.adj.y)), p) || p.distanceTo(c) > 40) return null;
+  return p;
+}
+function gesture() {
+  const q = [...tp.values()];
+  if (q.length === 1) return { n: 1, gp: groundPoint(q[0].x, q[0].y) };
+  const [a, b] = q; return { n: 2, gp: groundPoint((a.x + b.x) / 2, (a.y + b.y) / 2), ang: Math.atan2(b.y - a.y, b.x - a.x) };
+}
+const touchEl = $('touch');
+touchEl.addEventListener('pointerdown', e => {
+  if (!gestOK() || tp.size >= 2) return; try { touchEl.setPointerCapture(e.pointerId); } catch (_) {}
+  tp.set(e.pointerId, { x: e.clientX, y: e.clientY }); g0 = gesture();
+});
+touchEl.addEventListener('pointermove', e => {
+  if (!tp.has(e.pointerId) || !gestOK()) return;
+  tp.set(e.pointerId, { x: e.clientX, y: e.clientY }); const g = gesture();
+  if (g0 && g.n === g0.n) {
+    if (g.gp && g0.gp) align.adj.add(g.gp.clone().sub(g0.gp).setY(0));
+    if (g.n === 2) { const d = g.ang - g0.ang; align.yaw -= Math.atan2(Math.sin(d), Math.cos(d)); }
+    applyAlignment();
+  }
+  g0 = gesture();
+});
+const endTouch = e => { tp.delete(e.pointerId); g0 = tp.size ? gesture() : null; };
+touchEl.addEventListener('pointerup', endTouch); touchEl.addEventListener('pointercancel', endTouch);
+
 $('btnQuick').onclick = () => startAR(true);
 $('btnARTable').onclick = () => startAR(true, true);
 function setMenu(off) { document.body.classList.toggle('menuOff', off); $('btnMenu').textContent = off ? 'Menü ▴' : 'Menü ▾'; }
@@ -790,7 +824,7 @@ renderer.setAnimationLoop((t, frame) => {
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 19'; $('chkOvl').checked = store.get('ovl', true);
+$('diag').textContent = 'Version 20'; $('chkOvl').checked = store.get('ovl', true);
 </script>
 </body>
 </html>
