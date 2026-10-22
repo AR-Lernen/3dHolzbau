@@ -83,7 +83,7 @@
       <div class="row" id="sideRow"><button class="sm" data-side="-X">−X</button><button class="sm" data-side="+X">+X</button><button class="sm" data-side="-Z">−Z</button><button class="sm" data-side="+Z">+Z</button></div>
       <div class="sl"><span>Tiefe</span><input id="slSide" type="range" min="0" max="100" value="40"><span id="vSide">40%</span></div>
       <div class="hd">Darstellung</div>
-      <div class="sl"><span>Deckkraft</span><input id="slOp" type="range" min="5" max="100" value="45"><span id="vOp">45%</span></div>
+      <div class="sl"><span>Deckkraft</span><input id="slOp" type="range" min="5" max="100" value="60"><span id="vOp">60%</span></div>
       <div class="sl"><span>Schnitt oben</span><input id="slCut" type="range" min="0" max="100" value="100"><span id="vCut">aus</span></div>
       <div class="row" style="margin-top:6px">
         <label class="chk"><input id="chkEdges" type="checkbox" checked> Kanten</label>
@@ -157,6 +157,27 @@ const store = {
 };
 
 // ---------- Modell laden ----------
+// Prozedurale Holzmaserung (Fasern laufen entlang u)
+function woodTexture() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256; const x = c.getContext('2d');
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const g = x.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, '#d2a06a'); g.addColorStop(.35, '#c18c55'); g.addColorStop(.7, '#d6a671'); g.addColorStop(1, '#c4915a');
+  x.fillStyle = g; x.fillRect(0, 0, 512, 256);
+  for (let i = 0; i < 260; i++) {                           // Jahrringe/Fasern
+    const y0 = rnd() * 256, amp = rnd() * 3 + .5, ph = rnd() * 6.28, fr = rnd() * .02 + .005;
+    x.strokeStyle = rnd() < .75 ? 'rgba(98,60,26,' + (rnd() * .28 + .08) + ')' : 'rgba(240,205,150,' + (rnd() * .25 + .08) + ')';
+    x.lineWidth = rnd() * 2.2 + .4; x.beginPath();
+    for (let u = 0; u <= 512; u += 8) { const y = y0 + Math.sin(u * fr + ph) * amp; u ? x.lineTo(u, y) : x.moveTo(u, y); }
+    x.stroke();
+  }
+  for (let k = 0; k < 3; k++) {                             // Äste
+    const kx = rnd() * 512, ky = rnd() * 256;
+    for (let r = 14; r > 2; r -= 3) { x.strokeStyle = 'rgba(80,45,18,' + (.12 + (14 - r) * .03) + ')'; x.lineWidth = 1.6; x.beginPath(); x.ellipse(kx, ky, r * 2.4, r, 0, 0, 6.28); x.stroke(); }
+  }
+  const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1 / 0.9, 1 / 0.3); tex.anisotropy = 4;
+  tex.colorSpace = THREE.SRGBColorSpace; return tex;
+}
+const WOOD = woodTexture();
 const b64buf = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u.buffer; };
 const COLORS = { alt: 0xff6a3d, holz: 0x3fd6ff };
 const offPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 1e6);   // schneidet nie
@@ -185,13 +206,14 @@ for (const L of MODEL.layers) {
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(b64buf(L.p)), 3));
   g.setIndex(new THREE.BufferAttribute(toTA(L.i, L.it), 1));
   g.computeBoundingSphere();
-  const m = new THREE.MeshLambertMaterial({ color: new THREE.Color(L.col), transparent: true, opacity: 0.45, side: THREE.DoubleSide, flatShading: true, depthWrite: false, clippingPlanes: [cutPlane, offPlane] });
+  if (L.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(b64buf(L.uv)), 2));
+  const m = new THREE.MeshLambertMaterial({ color: L.uv ? new THREE.Color(L.col).lerp(new THREE.Color(0xffffff), 0.55) : new THREE.Color(L.col), map: L.uv ? WOOD : null, transparent: true, opacity: 0.6, side: THREE.DoubleSide, flatShading: true, depthWrite: false, clippingPlanes: [cutPlane, offPlane] });
   const mesh = new THREE.Mesh(g, m); mesh.renderOrder = 1; model.add(mesh); faceMats.push(m);
   const lg = new THREE.BufferGeometry();
   lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(b64buf(L.ep)), 3));
   lg.setIndex(new THREE.BufferAttribute(toTA(L.ei, L.eit), 1));
   const om = mkOcc(); const occ = new THREE.Mesh(g, om); occ.renderOrder = 0; model.add(occ);
-  const lm = new THREE.LineBasicMaterial({ color: COLORS[L.type], depthTest: true, clippingPlanes: [cutPlane, offPlane] });
+  const lm = new THREE.LineBasicMaterial({ color: COLORS[L.type], depthTest: true, transparent: true, opacity: 0.55, clippingPlanes: [cutPlane, offPlane] });
   const lines = new THREE.LineSegments(lg, lm); lines.renderOrder = 2; model.add(lines); lineMats.push(lm);
   layers.push({ type: L.type, floor: L.floor, name: L.name, col: L.col, mesh, lines, occ, mats: [m, om, lm] });
 }
@@ -200,6 +222,7 @@ beacon.renderOrder = 7; model.add(beacon);
 // Testwürfel: hängt fest vor der Kamera (nur AR) – zeigt, ob der 3D-Layer überhaupt dargestellt wird
 const testCube = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), new THREE.MeshBasicMaterial({ color: 0xff00ff, depthTest: false }));
 testCube.position.set(0, 0.12, -0.7); testCube.renderOrder = 20; testCube.visible = false; camera.add(testCube); scene.add(camera);
+const DEBUG = /[?&]debug/.test(location.search);
 const errs = []; addEventListener('error', e => errs.push(String(e.message).slice(0, 80)));
 renderer.debug.onShaderError = (gl, prog, vs, fs) => errs.push('Shader');
 const bmin = new THREE.Vector3(...MODEL.min), bmax = new THREE.Vector3(...MODEL.max);
@@ -255,7 +278,7 @@ function applyVis() {
 function applyOpacity() {
   const o = +$('slOp').value / 100; $('vOp').textContent = Math.round(o * 100) + '%';
   for (const m of faceMats) m.opacity = o;
-  store.set('op', $('slOp').value);
+  store.set('opv12', $('slOp').value);
 }
 function applyCut() {
   const v = +$('slCut').value;                // 100 = aus
@@ -272,7 +295,7 @@ function updateCutPlane() {
   const y = new THREE.Vector3(0, cutLocal, 0).applyMatrix4(model.matrixWorld).y;
   cutPlane.constant = y;                       // Ebene n=(0,-1,0): sichtbar ist y <= constant
 }
-$('slOp').value = store.get('op', 45); $('slOp').oninput = applyOpacity;
+$('slOp').value = store.get('opv12', 60); $('slOp').oninput = applyOpacity;
 $('slCut').oninput = applyCut;
 $('chkEdges').onchange = () => { applyVis(); };
 $('chkXray').onchange = () => { for (const m of lineMats) { m.depthTest = !$('chkXray').checked; m.needsUpdate = true; } applyVis(); };
@@ -441,7 +464,7 @@ function arText() {
   for (const b of $('scaleRow').querySelectorAll('button')) b.classList.toggle('on', Math.abs(+b.dataset.sc - bs) < 1e-6); $('lblScale').classList.toggle('hide', stage !== 'done');
   $('btnRealign').textContent = stage === 'free' ? 'Exakt einpassen' : 'Neu einpassen';
   document.body.classList.toggle('aiming', stage !== 'done');
-  beacon.visible = (inAR || inTab) && stage === 'free'; testCube.visible = inAR;
+  beacon.visible = DEBUG && (inAR || inTab) && stage === 'free'; testCube.visible = DEBUG && inAR;
   $('btnSet').disabled = (stage === 'mA' || stage === 'mB') && !aimPt;
   reticle.visible = (stage === 'rA' || stage === 'rB' || stage === 'free') && !!hitPose;
   aimMark.visible = (stage === 'mA' || stage === 'mB') && !!aimPt;
@@ -587,7 +610,7 @@ function arTick(t, frame) {
     const v = new THREE.Vector3(mp.x - c.x, 0, mp.z - c.z), rt = new THREE.Vector3().crossVectors(fw, YAX);
     const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
     const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
-    $('diag').textContent = 'v11' + (ovl ? ' Overlay' : ' XR') + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Säule: ' + dist.toFixed(1) + ' m, ' + where + ' · pink Würfel: ' + (testCube.visible ? 'an' : 'aus') + ' · Draws ' + renderer.info.render.calls + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '');
+    $('diag').textContent = DEBUG ? 'v12' + (ovl ? ' Overlay' : ' XR') + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + ' · Draws ' + renderer.info.render.calls + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (stage === 'free' || stage === 'done' ? '' : '');
   }
 }
 // ---------- Tisch-Modus: Kamerabild + Gerätelage, ohne WebXR ----------
@@ -616,7 +639,7 @@ async function startTable() {
 function stopTable() {
   removeEventListener('deviceorientation', onOri); if (camStream) camStream.getTracks().forEach(t => t.stop()); camStream = null; $('cam').srcObject = null;
   inTab = false; document.body.classList.remove('ar', 'tab', 'aiming'); bs = 1; resetModelTransform(); camera.fov = 55; camera.updateProjectionMatrix();
-  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 11'; refreshPoints();
+  beacon.visible = testCube.visible = aimMark.visible = false; $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; $('diag').textContent = 'Version 12'; refreshPoints();
 }
 $('btnTable').onclick = startTable;
 $('btnQuick').onclick = () => startAR(true);
@@ -652,7 +675,7 @@ renderer.setAnimationLoop((t, frame) => {
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 11'; $('chkOvl').checked = store.get('ovl', true);
+$('diag').textContent = 'Version 12'; $('chkOvl').checked = store.get('ovl', true);
 </script>
 </body>
 </html>

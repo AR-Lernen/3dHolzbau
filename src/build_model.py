@@ -24,6 +24,19 @@ def decode(s):
     assert idx.max() < v
     return pos, idx
 
+def wood_uv(s):
+    # Faserrichtung per Hauptachsenanalyse; UV in Metern: u = entlang der Faser, v = quer. Fläche wird per Normale einer der drei Ebenen zugeordnet.
+    b = s['binaryGeometry']; buf = bins[b['src']][b['offset']:b['offset'] + b['binSize']]; v = b['vertexCount']
+    P = np.frombuffer(buf, '<f4', v * 3).reshape(-1, 3).astype(float); N = np.frombuffer(buf, '<f4', v * 3, v * 12).reshape(-1, 3).astype(float)
+    c = P - P.mean(0); w, V = np.linalg.eigh(c.T @ c if len(P) > 2 else np.eye(3)); a1, a2, a3 = V[:, 2], V[:, 1], V[:, 0]
+    uv = np.zeros((v, 2), '<f4')
+    for i in range(v):
+        n = N[i]; d3, d2 = abs(n @ a3), abs(n @ a2)
+        if d3 >= d2 and d3 >= abs(n @ a1): uv[i] = (P[i] @ a1, P[i] @ a2)
+        elif d2 >= abs(n @ a1): uv[i] = (P[i] @ a1, P[i] @ a3)
+        else: uv[i] = (P[i] @ a2, P[i] @ a3)
+    return uv
+
 floor_of = {}
 for top in m['GroupTree']['Groups']:
     def walk(n, fl):
@@ -42,10 +55,12 @@ layers = collections.OrderedDict()
 for e in m['Elements']:
     typ = 'alt' if e['name'] in ALT else 'holz'
     fl = floor_of.get(e['UID'], '?')
-    Ly = layers.setdefault((typ, fl, e['name']), dict(p=[], i=[], ep=[], ei=[], n=0, en=0))
+    Ly = layers.setdefault((typ, fl, e['name']), dict(p=[], i=[], uv=[], ep=[], ei=[], n=0, en=0))
+    wood = typ == 'holz' and e['name'] != 'Beplankung'
     for vid in e['volumes']:
         p, i = decode(shapes[vid])
         Ly['i'].append(i + Ly['n']); Ly['p'].append(p); Ly['n'] += len(p)
+        if wood: Ly['uv'].append(wood_uv(shapes[vid]))
     for a, b in e['outlines']:
         vid = a if shapes[a]['description']['type'] == 'OUTLINE' else b
         p, i = decode(shapes[vid]); Ly['ei'].append(i + Ly['en']); Ly['ep'].append(p); Ly['en'] += len(p)
@@ -58,7 +73,8 @@ for (typ, fl, name), Ly in layers.items():
     P = np.concatenate(Ly['p']).astype('<f4'); allp.append(P)
     I = np.concatenate(Ly['i']); EP = np.concatenate(Ly['ep']).astype('<f4'); EI = np.concatenate(Ly['ei'])
     it, ib = idx(I); et, eb = idx(EI)
-    res.append(dict(type=typ, floor=fl, name=name, col=COL.get(name, '#cccccc'), p=b64(P), i=ib, it=it,
+    uvb = b64(np.concatenate(Ly['uv']).astype('<f4')) if Ly['uv'] else None
+    res.append(dict(type=typ, floor=fl, name=name, uv=uvb, col=COL.get(name, '#cccccc'), p=b64(P), i=ib, it=it,
                     ep=b64(EP), ei=eb, eit=et))
 A = np.concatenate(allp)
 json.dump(dict(name=m['ProjectInfo']['modelName'], min=A.min(0).tolist(), max=A.max(0).tolist(), layers=res),
