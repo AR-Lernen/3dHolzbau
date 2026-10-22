@@ -1,0 +1,67 @@
+{
+  "_hinweis": "Beispielkonfiguration (Projekt A). Namen = Bauteilnamen aus dem Export (siehe 'analyze').",
+  "title": "Holzbau AR",
+  "public_name": "Modell",
+  "labels": {
+    "alt": "Altbau",
+    "neu": "Holzbau"
+  },
+  "altbau_names": [
+    "Vollziegel",
+    "Lehmstein",
+    "Wand-003"
+  ],
+  "plain_names": [
+    "Beplankung"
+  ],
+  "cladding_names": [
+    "Beplankung"
+  ],
+  "wallmap_names": [
+    "Vollziegel",
+    "Lehmstein",
+    "Wand-003",
+    "Platte"
+  ],
+  "floor_order": [
+    "UG / Fundament",
+    "EG",
+    "Geschoss 1",
+    "OG",
+    "Dachboden"
+  ],
+  "colors": {
+    "Vollziegel": "#b4553d",
+    "Lehmstein": "#c9a06f",
+    "Wand-003": "#8d8d8d",
+    "Wandstiel": "#e0b060",
+    "Balken": "#d49a4a",
+    "Beplankung": "#efd9a0",
+    "Rähm": "#c98d45",
+    "Wandschwelle": "#b97f3e",
+    "Wandmontageschwelle": "#b97f3e",
+    "Sturz": "#cf9650",
+    "Stütze": "#c58a42",
+    "Decke": "#e6c27a",
+    "Brüstung": "#dcae62",
+    "Unterzug": "#c58a42",
+    "Auffütterung": "#e0b060",
+    "Platte": "#e6c27a"
+  },
+  "tiles": {},
+  "tile_default": [
+    1.0,
+    1.0
+  ],
+  "reference": {
+    "altbau_names": [
+      "Vollziegel"
+    ],
+    "altbau_floor": "EG",
+    "neubau_names": [
+      "Wandstiel"
+    ],
+    "neubau_floor": "EG"
+  },
+  "texture_max_px": 512
+}

@@ -1,0 +1,49 @@
+{
+  "_hinweis": "Kachelgröße in Metern (u entlang Faser bzw. horizontal, v quer bzw. vertikal) für bekannte Cadwork-Datenbank-Texturen (cwdbimg_*). Unbekannte Bilder bekommen tile_default.",
+  "tiles": {
+    "cwdbimg_121": [
+      1.2,
+      0.5
+    ],
+    "cwdbimg_127": [
+      0.5,
+      0.5
+    ],
+    "cwdbimg_88_gs": [
+      1.0,
+      0.5
+    ],
+    "cwdbimg_5_gs": [
+      0.5,
+      0.5
+    ],
+    "cwdbimg_4": [
+      1.4,
+      0.7
+    ],
+    "cwdbimg_5": [
+      0.5,
+      0.5
+    ],
+    "cwdbimg_49": [
+      1.0,
+      0.6
+    ],
+    "cwdbimg_54": [
+      1.2,
+      1.2
+    ],
+    "cwdbimg_2618": [
+      0.8,
+      0.8
+    ],
+    "cwdbimg_2614": [
+      0.8,
+      0.8
+    ],
+    "cwdbimg_269": [
+      1.5,
+      1.5
+    ]
+  }
+}

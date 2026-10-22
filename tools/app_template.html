@@ -74,7 +74,7 @@
   <div id="bottom">
     <div id="layPanel" class="panel hide" style="max-height:50vh;overflow:auto">
       <div class="row" style="margin-bottom:8px">
-        <button class="sm" data-pre="all">Alles</button><button class="sm" data-pre="holz">Nur Holzbau</button><button class="sm" data-pre="trag">Tragwerk (ohne Beplankung)</button><button class="sm" data-pre="alt">Nur Altbau</button>
+        <button class="sm" data-pre="all">Alles</button><button class="sm" data-pre="holz">Nur Holzbau</button><button class="sm" data-pre="trag" id="preTrag">Tragwerk</button><button class="sm" data-pre="alt">Nur Altbau</button>
       </div>
       <div id="bauteile"></div>
       <div class="hd">Geschosse</div>
@@ -232,7 +232,9 @@ beacon.position.set(bcen.x, 3, bcen.z); beacon.visible = false;
 
 // ---------- Ebenen-UI ----------
 const floors = [...new Set(MODEL.layers.map(l => l.floor))];
-const order = ['UG / Fundament', 'EG', 'Geschoss 1', 'OG', 'Dachboden'];
+const CFG = MODEL.cfg || {}, CLAD = CFG.cladding_names || [];
+const order = CFG.floor_order || [];
+$('preTrag').textContent = 'Tragwerk' + (CLAD.length ? ' (ohne ' + CLAD.join(' / ') + ')' : '');
 floors.sort((a, b) => (order.indexOf(a) < 0 ? 9 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 9 : order.indexOf(b)));
 const names = { alt: [], holz: [] }, colOf = {};
 for (const l of layers) { if (!names[l.type].includes(l.name)) names[l.type].push(l.name); colOf[l.name] = l.col; }
@@ -264,7 +266,7 @@ $('slSide').oninput = () => { sideDepth = +$('slSide').value; $('vSide').textCon
 document.querySelector('#layPanel').addEventListener('click', e => {
   const k = e.target.dataset && e.target.dataset.pre; if (!k) return;
   for (const n of names.alt) vis[n] = k === 'all' || k === 'alt';
-  for (const n of names.holz) vis[n] = !(k === 'alt' || (k === 'trag' && n === 'Beplankung'));
+  for (const n of names.holz) vis[n] = !(k === 'alt' || (k === 'trag' && CLAD.includes(n)));
   save(); syncUI(); applyVis();
 });
 function applyClip() {                                      // pro Bauteil: Seitenebene an/aus (gleiche Plane-Anzahl → kein Neukompilieren)
@@ -719,7 +721,7 @@ async function startTable() {
     if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) { if (await DeviceOrientationEvent.requestPermission() !== 'granted') throw new Error('Bewegungssensoren nicht erlaubt'); }
     camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
   } catch (e) { flash('Tisch-Modus nicht möglich: ' + e.message); return; }
-  $('cam').srcObject = camStream; try { await $('cam').play(); } catch (e) {}
+  $('cam').srcObject = camStream; $('cam').play().catch(() => {});
   addEventListener('deviceorientation', onOri); dev.a0 = null;
   inTab = true; document.body.classList.add('ar', 'tab'); scene.background = null; camera.fov = 62; camera.updateProjectionMatrix();
   resetModelTransform(); align.mode = 'free'; align.b = null; align.adj.set(0, 0, 0); align.yaw = 0; align.a = new THREE.Vector3(0, -0.6, -0.7);
