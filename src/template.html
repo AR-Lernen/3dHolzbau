@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Holzbau AR</title>
+<style>
+  :root { --bg:#14171a; --panel:rgba(20,23,26,.86); --fg:#f2f4f5; --mut:#9aa4ab; --acc:#ffb347; --alt:#ff6a3d; --holz:#e0b060; --ok:#4cd68a; --bad:#ff6b6b; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:15px/1.35 system-ui,sans-serif; overflow:hidden; touch-action:none; }
+  body.ar { background:transparent; }
+  canvas#gl { position:fixed; inset:0; width:100%; height:100%; display:block; }
+  #ui { position:fixed; inset:0; pointer-events:none; }
+  #ui > * { pointer-events:auto; }
+  .panel { background:var(--panel); border-radius:14px; padding:10px 12px; backdrop-filter:blur(6px); }
+  #top { position:absolute; left:10px; right:10px; top:max(10px,env(safe-area-inset-top)); display:flex; gap:8px; align-items:flex-start; }
+  #status { flex:1; min-width:0; }
+  #status b { color:var(--acc); }
+  #status small { color:var(--mut); display:block; }
+  #bottom { position:absolute; left:10px; right:10px; bottom:max(10px,env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:8px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  button { font:inherit; color:var(--fg); background:#2b3238; border:1px solid #3a434b; border-radius:12px; padding:11px 14px; min-height:44px; }
+  button:active { background:#3a434b; }
+  button.pri { background:var(--acc); color:#1b1206; border-color:var(--acc); font-weight:600; }
+  button.on { outline:2px solid var(--acc); }
+  button[disabled] { opacity:.4; }
+  button.sm { padding:6px 10px; min-height:36px; }
+  .flex1 { flex:1; }
+  label.chk { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; background:#2b3238; border-radius:10px; min-height:36px; }
+  label.chk input { width:18px; height:18px; accent-color:var(--acc); }
+  .sw { width:10px; height:10px; border-radius:3px; display:inline-block; }
+  table.lay { border-collapse:separate; border-spacing:6px 4px; }
+  table.lay th { font-weight:500; color:var(--mut); font-size:13px; text-align:left; }
+  input[type=range] { width:100%; accent-color:var(--acc); height:28px; }
+  .sl { display:grid; grid-template-columns:78px 1fr 44px; gap:8px; align-items:center; font-size:13px; color:var(--mut); }
+  .sl span:last-child { color:var(--fg); text-align:right; }
+  .hide { display:none !important; }
+  body.ar .previewOnly { display:none !important; }
+  body:not(.ar) .arOnly { display:none !important; }
+  #msg { position:absolute; left:50%; top:45%; transform:translate(-50%,-50%); text-align:center; max-width:80%; pointer-events:none; }
+  #cross { position:absolute; left:50%; top:50%; width:34px; height:34px; margin:-17px 0 0 -17px; pointer-events:none; opacity:.9; display:none; }
+  body.ar.aiming #cross { display:block; }
+  #cross:before,#cross:after { content:""; position:absolute; background:#fff; box-shadow:0 0 3px #000; }
+  #cross:before { left:16px; top:0; width:2px; height:34px; }
+  #cross:after { top:16px; left:0; height:2px; width:34px; }
+  .pad { display:grid; grid-template-columns:repeat(3,48px); grid-template-rows:repeat(3,44px); gap:4px; }
+  .pad button { padding:0; }
+  details > summary { cursor:pointer; padding:6px 2px; color:var(--mut); list-style:none; }
+  details > summary::-webkit-details-marker { display:none; }
+  .err { color:var(--bad); }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="cross"></div>
+<div id="ui">
+  <div id="top">
+    <div id="status" class="panel"><b id="stTitle">Vorschau</b><small id="stText"></small></div>
+    <button id="btnLay" class="sm">Ebenen</button>
+  </div>
+  <div id="msg" class="panel hide"></div>
+
+  <div id="bottom">
+    <div id="layPanel" class="panel hide">
+      <table class="lay" id="layTable"></table>
+      <div class="sl"><span>Deckkraft</span><input id="slOp" type="range" min="5" max="100" value="45"><span id="vOp">45%</span></div>
+      <div class="sl"><span>Schnitt oben</span><input id="slCut" type="range" min="0" max="100" value="100"><span id="vCut">aus</span></div>
+      <div class="row" style="margin-top:6px">
+        <label class="chk"><input id="chkEdges" type="checkbox" checked> Kanten</label>
+        <label class="chk"><input id="chkXray" type="checkbox"> Röntgen (alle Kanten)</label>
+      </div>
+    </div>
+
+    <!-- Vorschau: Fixpunkte im Modell wählen -->
+    <div id="pvPanel" class="panel previewOnly">
+      <div class="row" style="margin-bottom:8px">
+        <span style="color:var(--mut)">Fixpunkte im Modell:</span>
+        <label class="chk"><input id="chk2" type="checkbox" checked> 2 Punkte</label>
+      </div>
+      <div class="row">
+        <button id="pickA" class="flex1">A wählen</button>
+        <button id="pickB" class="flex1">B wählen</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnAR" class="pri flex1" disabled>AR starten</button>
+        <button id="btnClear" class="sm">Punkte löschen</button>
+      </div>
+      <small id="pvHint" style="color:var(--mut);display:block;margin-top:6px"></small>
+    </div>
+
+    <!-- AR: Fixpunkte vor Ort setzen -->
+    <div id="arPanel" class="panel arOnly">
+      <div class="row" id="arSet">
+        <button id="btnSet" class="pri flex1">Fixpunkt A hier setzen</button>
+        <button id="btnUndo" class="sm">Zurück</button>
+      </div>
+      <div id="arAdj" class="hide">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div class="pad">
+            <span></span><button data-n="fwd">▲</button><span></span>
+            <button data-n="left">◀</button><button id="btnStep" class="sm">1 cm</button><button data-n="right">▶</button>
+            <span></span><button data-n="back">▼</button><span></span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <button data-n="up" class="sm">Höhe ▲</button>
+            <button data-n="down" class="sm">Höhe ▼</button>
+            <button data-n="ccw" class="sm">↺ drehen</button>
+            <button data-n="cw" class="sm">↻ drehen</button>
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label class="chk"><input id="chkScale" type="checkbox"> Maßstab aus Punkten</label>
+          <button id="btnRealign" class="sm">Neu ausrichten</button>
+          <button id="btnExit" class="sm">Beenden</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>/*THREE*/</script>
+<script>
+"use strict";
+const MODEL = /*MODEL*/;
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('kar.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('kar.' + k, JSON.stringify(v)); } catch (e) {} }
+};
+
+// ---------- Modell laden ----------
+const b64buf = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u.buffer; };
+const COLORS = { alt: 0xff6a3d, holz: 0x3fd6ff };
+const SWATCH = { alt: '#b4553d', holz: '#e0b060' };
+
+const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.localClippingEnabled = true;
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, 1, 0.02, 200);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(0.4, 1, 0.6); scene.add(sun);
+
+const cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6);
+const model = new THREE.Group();           // Alles, was ausgerichtet wird
+scene.add(model);
+const layers = [];                         // {type,floor,mesh,lines,occ}
+const faceMats = [], lineMats = [];
+const occMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes: [cutPlane] });
+const toTA = (b, t) => t === 'u16' ? new Uint16Array(b64buf(b)) : new Uint32Array(b64buf(b));
+for (const L of MODEL.layers) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(b64buf(L.p)), 3));
+  g.setAttribute('color', new THREE.BufferAttribute(new Uint8Array(b64buf(L.c)), 3, true));
+  g.setIndex(new THREE.BufferAttribute(toTA(L.i, L.it), 1));
+  g.computeBoundingSphere();
+  const m = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.45, side: THREE.DoubleSide, flatShading: true, depthWrite: false, clippingPlanes: [cutPlane] });
+  const mesh = new THREE.Mesh(g, m); mesh.renderOrder = 1; model.add(mesh); faceMats.push(m);
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(b64buf(L.ep)), 3));
+  lg.setIndex(new THREE.BufferAttribute(toTA(L.ei, L.eit), 1));
+  const occ = new THREE.Mesh(g, occMat); occ.renderOrder = 0; model.add(occ);
+  const lm = new THREE.LineBasicMaterial({ color: COLORS[L.type], depthTest: true, clippingPlanes: [cutPlane] });
+  const lines = new THREE.LineSegments(lg, lm); lines.renderOrder = 2; model.add(lines); lineMats.push(lm);
+  layers.push({ type: L.type, floor: L.floor, mesh, lines, occ });
+}
+const bmin = new THREE.Vector3(...MODEL.min), bmax = new THREE.Vector3(...MODEL.max);
+const bcen = bmin.clone().add(bmax).multiplyScalar(.5), bsize = bmax.clone().sub(bmin);
+
+// ---------- Ebenen-UI ----------
+const floors = [...new Set(MODEL.layers.map(l => l.floor))];
+const order = ['UG / Fundament', 'EG', 'Geschoss 1', 'OG', 'Dachboden'];
+floors.sort((a, b) => (order.indexOf(a) < 0 ? 9 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 9 : order.indexOf(b)));
+const vis = store.get('vis', {});
+const layKey = l => l.type + '|' + l.floor;
+(function buildLayerTable() {
+  let h = '<tr><th></th><th><span class="sw" style="background:' + SWATCH.alt + '"></span> Altbau</th><th><span class="sw" style="background:' + SWATCH.holz + '"></span> Holzbau</th></tr>';
+  for (const f of floors) {
+    h += '<tr><th>' + f + '</th>';
+    for (const t of ['alt', 'holz']) {
+      const has = layers.some(l => l.type === t && l.floor === f);
+      h += '<td>' + (has ? '<label class="chk"><input type="checkbox" data-k="' + t + '|' + f + '" checked></label>' : '') + '</td>';
+    }
+    h += '</tr>';
+  }
+  $('layTable').innerHTML = h;
+  $('layTable').addEventListener('change', e => { vis[e.target.dataset.k] = e.target.checked; store.set('vis', vis); applyVis(); });
+  for (const cb of $('layTable').querySelectorAll('input')) if (vis[cb.dataset.k] === false) cb.checked = false;
+})();
+function applyVis() {
+  for (const l of layers) {
+    const on = vis[layKey(l)] !== false;
+    l.mesh.visible = on; l.occ.visible = on && !$('chkXray').checked; l.lines.visible = on && $('chkEdges').checked;
+  }
+}
+function applyOpacity() {
+  const o = +$('slOp').value / 100; $('vOp').textContent = Math.round(o * 100) + '%';
+  for (const m of faceMats) m.opacity = o;
+  store.set('op', $('slOp').value);
+}
+function applyCut() {
+  const v = +$('slCut').value;                // 100 = aus
+  $('vCut').textContent = v >= 100 ? 'aus' : ((bmin.y + (bsize.y * v / 100)).toFixed(2) + ' m');
+  cutLocal = v >= 100 ? null : bmin.y + bsize.y * v / 100;
+  updateCutPlane();
+}
+let cutLocal = null;
+function updateCutPlane() {
+  model.updateMatrixWorld(true);
+  if (cutLocal == null) { cutPlane.constant = 1e6; return; }
+  const y = new THREE.Vector3(0, cutLocal, 0).applyMatrix4(model.matrixWorld).y;
+  cutPlane.constant = y;                       // Ebene n=(0,-1,0): sichtbar ist y <= constant
+}
+$('slOp').value = store.get('op', 45); $('slOp').oninput = applyOpacity;
+$('slCut').oninput = applyCut;
+$('chkEdges').onchange = () => { applyVis(); };
+$('chkXray').onchange = () => { for (const m of lineMats) { m.depthTest = !$('chkXray').checked; m.needsUpdate = true; } applyVis(); };
+$('btnLay').onclick = () => $('layPanel').classList.toggle('hide');
+applyVis(); applyOpacity(); applyCut();
+
+// ---------- Fixpunkte im Modell ----------
+let ptA = store.get('A', null), ptB = store.get('B', null);
+let picking = null;
+const markers = new THREE.Group(); model.add(markers);
+function mkMarker(label, color) {
+  const g = new THREE.Group();
+  const s = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 12), new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true }));
+  s.renderOrder = 5; g.add(s);
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  x.fillStyle = '#000a'; x.beginPath(); x.arc(32, 32, 30, 0, 7); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 40px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(label, 32, 34);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false })); sp.scale.set(.28, .28, 1); sp.position.y = .22; sp.renderOrder = 6; g.add(sp);
+  return g;
+}
+const mkA = mkMarker('A', 0xffb347), mkB = mkMarker('B', 0x4cd68a);
+markers.add(mkA, mkB);
+function refreshPoints() {
+  mkA.visible = !!ptA; mkB.visible = !!ptB && $('chk2').checked;
+  if (ptA) mkA.position.fromArray(ptA); if (ptB) mkB.position.fromArray(ptB);
+  $('pickA').textContent = ptA ? 'A ✓ neu wählen' : 'A wählen';
+  $('pickB').textContent = ptB ? 'B ✓ neu wählen' : 'B wählen';
+  $('pickB').style.display = $('chk2').checked ? '' : 'none';
+  const ready = ptA && (!$('chk2').checked || ptB);
+  $('btnAR').disabled = !ready || !xrOK;
+  $('pvHint').textContent = !xrOK ? 'WebXR/AR ist hier nicht verfügbar (Android-Chrome über HTTPS nötig).'
+    : picking ? 'Tippe auf eine Ecke im Modell (rastet am nächsten Eckpunkt ein).'
+    : ready ? '' : 'Wähle Punkte, die du auf der Baustelle sicher wiederfindest (z. B. Gebäudeecken).';
+  const d = ptA && ptB && $('chk2').checked ? new THREE.Vector3().fromArray(ptA).distanceTo(new THREE.Vector3().fromArray(ptB)) : 0;
+  if (d) $('pvHint').textContent += (picking ? ' ' : '') + 'Abstand A–B im Modell: ' + d.toFixed(3) + ' m';
+  $('pickA').classList.toggle('on', picking === 'A'); $('pickB').classList.toggle('on', picking === 'B');
+}
+$('pickA').onclick = () => { picking = picking === 'A' ? null : 'A'; refreshPoints(); };
+$('pickB').onclick = () => { picking = picking === 'B' ? null : 'B'; refreshPoints(); };
+$('chk2').onchange = () => { store.set('two', $('chk2').checked); refreshPoints(); };
+$('chk2').checked = store.get('two', true);
+$('btnClear').onclick = () => { ptA = ptB = null; store.set('A', null); store.set('B', null); refreshPoints(); };
+
+// ---------- Vorschau-Kamera (Orbit) ----------
+const orb = { t: bcen.clone(), r: bsize.length() * 0.95, az: -0.8, el: 0.45 };
+function applyOrbit() {
+  const { t, r, az, el } = orb;
+  camera.position.set(t.x + r * Math.cos(el) * Math.sin(az), t.y + r * Math.sin(el), t.z + r * Math.cos(el) * Math.cos(az));
+  camera.lookAt(t);
+}
+const ptrs = new Map(); let tapStart = null, lastPinch = 0, lastMid = null;
+const cvs = $('gl');
+cvs.addEventListener('pointerdown', e => {
+  if (inAR) return; cvs.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  tapStart = ptrs.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+  lastPinch = 0; lastMid = null;
+});
+cvs.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return; const p = ptrs.get(e.pointerId);
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (ptrs.size === 1 && !(e.buttons & 2)) { orb.az -= dx * 0.006; orb.el = Math.max(-1.4, Math.min(1.5, orb.el + dy * 0.006)); }
+  else {
+    const [a, b] = [...ptrs.values()];
+    if (b) {
+      const d = Math.hypot(a.x - b.x, a.y - b.y), mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      if (lastPinch) orb.r = Math.max(0.5, Math.min(120, orb.r * lastPinch / d));
+      if (lastMid) panOrbit(mid.x - lastMid.x, mid.y - lastMid.y);
+      lastPinch = d; lastMid = mid;
+    } else panOrbit(dx, dy);
+  }
+  if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8) tapStart = null;
+});
+function panOrbit(dx, dy) {
+  const k = orb.r * 0.0016, right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0), up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+  orb.t.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
+}
+const endPtr = e => {
+  if (!ptrs.has(e.pointerId)) return;
+  if (tapStart && ptrs.size === 1 && performance.now() - tapStart.t < 500 && picking) pickAt(e.clientX, e.clientY);
+  ptrs.delete(e.pointerId); tapStart = null; lastPinch = 0; lastMid = null;
+};
+cvs.addEventListener('pointerup', endPtr); cvs.addEventListener('pointercancel', endPtr);
+cvs.addEventListener('wheel', e => { if (inAR) return; e.preventDefault(); orb.r = Math.max(0.5, Math.min(120, orb.r * Math.exp(e.deltaY * 0.001))); }, { passive: false });
+cvs.addEventListener('contextmenu', e => e.preventDefault());
+
+const ray = new THREE.Raycaster();
+function pickAt(x, y) {
+  const ndc = new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const meshes = layers.filter(l => l.mesh.visible).map(l => l.mesh);
+  
+  const hits = ray.intersectObjects(meshes, false);
+  if (!hits.length) return;
+  const h = hits[0], pos = h.object.geometry.attributes.position, f = h.face;
+  let best = null, bd = 1e9;
+  for (const i of [f.a, f.b, f.c]) {
+    const v = new THREE.Vector3().fromBufferAttribute(pos, i); const d = v.distanceTo(h.point);
+    if (d < bd) { bd = d; best = v; }
+  }
+  const p = best.toArray();                    // Modellkoordinaten (Modellgruppe ist in der Vorschau Identität)
+  if (picking === 'A') { ptA = p; store.set('A', p); picking = $('chk2').checked && !ptB ? 'B' : null; }
+  else { ptB = p; store.set('B', p); picking = null; }
+  refreshPoints();
+}
+
+// ---------- Ausrichtung ----------
+const YAX = new THREE.Vector3(0, 1, 0);
+const align = { a: null, b: null, adj: new THREE.Vector3(), yaw: 0, useScale: false, step: 0.01 };
+let arStage = 0;                               // 0: A setzen, 1: B setzen, 2: ausgerichtet
+function applyAlignment() {
+  if (!align.a) return;
+  const A = new THREE.Vector3().fromArray(ptA);
+  let theta = align.yaw, s = 1, info = '';
+  if (align.b && $('chk2').checked && ptB) {
+    const B = new THREE.Vector3().fromArray(ptB);
+    const vm = new THREE.Vector2(B.x - A.x, B.z - A.z), vw = new THREE.Vector2(align.b.x - align.a.x, align.b.z - align.a.z);
+    const psi = v => Math.atan2(-v.y, v.x);
+    theta = psi(vw) - psi(vm) + align.yaw;
+    const lm = B.distanceTo(A), lw = align.b.distanceTo(align.a);
+    if (align.useScale) s = lw / lm;
+    const dev = (lw - lm * s) * 100;
+    info = 'Modell A–B ' + lm.toFixed(3) + ' m · vor Ort ' + lw.toFixed(3) + ' m · Δ ' + ((lw - lm) * 100).toFixed(1) + ' cm' + (align.useScale ? ' (Maßstab ' + s.toFixed(4) + ')' : '');
+  }
+  model.rotation.set(0, theta, 0); model.scale.setScalar(s);
+  const rot = A.clone().multiplyScalar(s).applyAxisAngle(YAX, theta);
+  model.position.copy(align.a).sub(rot).add(align.adj);
+  model.updateMatrixWorld(true); updateCutPlane();
+  align.info = info;
+}
+function resetModelTransform() { model.position.set(0, 0, 0); model.rotation.set(0, 0, 0); model.scale.setScalar(1); model.updateMatrixWorld(true); updateCutPlane(); }
+
+// ---------- AR ----------
+let xrOK = false, inAR = false, xrSession = null, hitSource = null, hitPose = null;
+const reticle = new THREE.Mesh(new THREE.RingGeometry(0.035, 0.05, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true }));
+reticle.matrixAutoUpdate = false; reticle.visible = false; reticle.renderOrder = 10; scene.add(reticle);
+const dot = new THREE.Mesh(new THREE.SphereGeometry(0.008, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffb347, depthTest: false })); dot.renderOrder = 11; reticle.add(dot);
+const fixA = mkMarker('A', 0xffb347), fixB = mkMarker('B', 0x4cd68a); fixA.visible = fixB.visible = false; scene.add(fixA, fixB);
+fixA.scale.setScalar(.5); fixB.scale.setScalar(.5);
+
+(async () => {
+  try { xrOK = !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar')); } catch (e) { xrOK = false; }
+  refreshPoints();
+})();
+
+function arText() {
+  const two = $('chk2').checked;
+  if (arStage === 0) { $('stTitle').textContent = 'Fixpunkt A'; $('stText').textContent = 'Fadenkreuz auf den Punkt A halten (Ecke im Raum), dann „setzen“. Der Ring zeigt die erkannte Fläche.'; $('btnSet').textContent = 'Fixpunkt A hier setzen'; }
+  else if (arStage === 1) { $('stTitle').textContent = 'Fixpunkt B'; $('stText').textContent = 'Zum zweiten Punkt B gehen und anvisieren.'; $('btnSet').textContent = 'Fixpunkt B hier setzen'; }
+  else { $('stTitle').textContent = 'Ausgerichtet'; $('stText').innerHTML = (align.info || (two ? '' : 'Ein Punkt: Richtung mit ↺/↻ einstellen.')) + '<small>Feinjustage unten · Ebenen oben rechts</small>'; }
+  $('arSet').classList.toggle('hide', arStage === 2);
+  $('arAdj').classList.toggle('hide', arStage !== 2);
+  document.body.classList.toggle('aiming', arStage < 2);
+}
+function setPoint() {
+  if (!hitPose) { flash('Noch keine Fläche erkannt – Gerät langsam bewegen.'); return; }
+  const p = new THREE.Vector3().setFromMatrixPosition(hitPose);
+  const two = $('chk2').checked;
+  if (arStage === 0) {
+    align.a = p; fixA.position.copy(p); fixA.visible = true; align.b = null; align.adj.set(0, 0, 0); align.yaw = 0;
+    if (two) arStage = 1; else { arStage = 2; applyAlignment(); }
+  } else if (arStage === 1) {
+    if (p.distanceTo(align.a) < 0.3) { flash('Punkt B liegt zu nah an A.'); return; }
+    align.b = p; fixB.position.copy(p); fixB.visible = true; arStage = 2; applyAlignment();
+  }
+  model.visible = arStage === 2; arText();
+}
+$('btnSet').onclick = setPoint;
+$('btnUndo').onclick = () => { if (arStage === 1) { arStage = 0; fixA.visible = false; align.a = null; } arText(); };
+$('btnRealign').onclick = () => { arStage = 0; align.a = align.b = null; fixA.visible = fixB.visible = false; model.visible = false; arText(); };
+$('btnExit').onclick = () => xrSession && xrSession.end();
+$('chkScale').onchange = e => { align.useScale = e.target.checked; applyAlignment(); arText(); };
+$('btnStep').onclick = () => { const s = [0.01, 0.05, 0.002]; align.step = s[(s.indexOf(align.step) + 1) % s.length]; $('btnStep').textContent = (align.step * 100).toString().replace('.', ',') + ' cm'; };
+$('arAdj').addEventListener('click', e => {
+  const k = e.target.dataset && e.target.dataset.n; if (!k) return;
+  const cam = renderer.xr.getCamera(); const fw = new THREE.Vector3(); cam.getWorldDirection(fw); fw.y = 0;
+  if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize(); const rt = new THREE.Vector3().crossVectors(fw, YAX);
+  const st = align.step, dyaw = (align.step >= 0.05 ? 1 : align.step <= 0.002 ? 0.1 : 0.3) * Math.PI / 180;
+  if (k === 'fwd') align.adj.addScaledVector(fw, st); if (k === 'back') align.adj.addScaledVector(fw, -st);
+  if (k === 'right') align.adj.addScaledVector(rt, st); if (k === 'left') align.adj.addScaledVector(rt, -st);
+  if (k === 'up') align.adj.y += st; if (k === 'down') align.adj.y -= st;
+  if (k === 'ccw') align.yaw += dyaw; if (k === 'cw') align.yaw -= dyaw;
+  applyAlignment(); arText();
+});
+let flashT = 0;
+function flash(t) { const m = $('msg'); m.textContent = t; m.classList.remove('hide'); clearTimeout(flashT); flashT = setTimeout(() => m.classList.add('hide'), 2200); }
+
+$('btnAR').onclick = async () => {
+  if (xrSession) return;
+  try {
+    xrSession = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay', 'local-floor'], domOverlay: { root: $('ui') } });
+  } catch (e) { flash('AR konnte nicht gestartet werden: ' + e.message); return; }
+  renderer.xr.setReferenceSpaceType('local-floor');
+  await renderer.xr.setSession(xrSession);
+  const viewer = await xrSession.requestReferenceSpace('viewer');
+  hitSource = await xrSession.requestHitTestSource({ space: viewer });
+  inAR = true; document.body.classList.add('ar'); scene.background = null;
+  resetModelTransform(); model.visible = false; markers.visible = false; align.a = align.b = null; align.adj.set(0, 0, 0); align.yaw = 0;
+  arStage = 0; arText();
+  xrSession.addEventListener('end', () => {
+    inAR = false; xrSession = null; hitSource = null; hitPose = null; reticle.visible = false; fixA.visible = fixB.visible = false;
+    document.body.classList.remove('ar', 'aiming'); model.visible = true; markers.visible = true; resetModelTransform();
+    $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; refreshPoints();
+  });
+};
+
+// ---------- Loop ----------
+function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+renderer.setAnimationLoop((t, frame) => {
+  if (!inAR) { applyOrbit(); }
+  else if (frame && hitSource) {
+    const res = frame.getHitTestResults(hitSource);
+    if (res.length) {
+      const pose = res[0].getPose(renderer.xr.getReferenceSpace());
+      hitPose = new THREE.Matrix4().fromArray(pose.transform.matrix);
+      reticle.matrix.copy(hitPose); reticle.visible = arStage < 2;
+    } else { hitPose = null; reticle.visible = false; }
+  }
+  renderer.render(scene, camera);
+});
+refreshPoints();
+$('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
+</script>
+</body>
+</html>
