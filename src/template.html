@@ -73,6 +73,7 @@
 
     <!-- Vorschau: Fixpunkte im Modell wählen -->
     <div id="pvPanel" class="panel previewOnly">
+      <button id="btnQuick" class="pri" style="width:100%;margin-bottom:10px" disabled>Schnellstart: Modell 1:1 in AR ansehen</button>
       <div class="row" style="margin-bottom:8px">
         <span style="color:var(--mut)">Fixpunkte im Modell:</span>
         <label class="chk"><input id="chk2" type="checkbox" checked> 2 Punkte</label>
@@ -82,19 +83,23 @@
         <button id="pickB" class="flex1">B wählen</button>
       </div>
       <div class="row" style="margin-top:8px">
-        <button id="btnAR" class="pri flex1" disabled>AR starten</button>
+        <button id="btnAR" class="flex1" disabled>Mit Fixpunkten starten</button>
         <button id="btnClear" class="sm">Punkte löschen</button>
       </div>
       <small id="pvHint" style="color:var(--mut);display:block;margin-top:6px"></small>
     </div>
 
-    <!-- AR: Fixpunkte vor Ort setzen -->
+    <!-- AR -->
     <div id="arPanel" class="panel arOnly">
       <div class="row" id="arSet">
-        <button id="btnSet" class="pri flex1">Fixpunkt A hier setzen</button>
+        <button id="btnSet" class="pri flex1">setzen</button>
         <button id="btnUndo" class="sm">Zurück</button>
       </div>
       <div id="arAdj" class="hide">
+        <div class="row" style="margin-bottom:8px">
+          <button id="btnPlace" class="flex1">Modell hierhin setzen</button>
+          <button id="btnRealign" class="pri flex1">Exakt einpassen</button>
+        </div>
         <div class="row" style="justify-content:space-between;align-items:center">
           <div class="pad">
             <span></span><button data-n="fwd">▲</button><span></span>
@@ -109,8 +114,7 @@
           </div>
         </div>
         <div class="row" style="margin-top:8px">
-          <label class="chk"><input id="chkScale" type="checkbox"> Maßstab aus Punkten</label>
-          <button id="btnRealign" class="sm">Neu ausrichten</button>
+          <label class="chk" id="lblScale"><input id="chkScale" type="checkbox"> Maßstab aus Punkten</label>
           <button id="btnExit" class="sm">Beenden</button>
         </div>
       </div>
@@ -242,10 +246,10 @@ function refreshPoints() {
   $('pickB').textContent = ptB ? 'B ✓ neu wählen' : 'B wählen';
   $('pickB').style.display = $('chk2').checked ? '' : 'none';
   const ready = ptA && (!$('chk2').checked || ptB);
-  $('btnAR').disabled = !ready || !xrOK;
+  $('btnAR').disabled = !ready || !xrOK; $('btnQuick').disabled = !xrOK;
   $('pvHint').textContent = !xrOK ? 'WebXR/AR ist hier nicht verfügbar (Android-Chrome über HTTPS nötig).'
     : picking ? 'Tippe auf eine Ecke im Modell (rastet am nächsten Eckpunkt ein).'
-    : ready ? '' : 'Wähle Punkte, die du auf der Baustelle sicher wiederfindest (z. B. Gebäudeecken).';
+    : ready ? '' : 'Optional: Punkte vorab wählen, die du auf der Baustelle sicher findest (Gebäudeecken). Oder Schnellstart und in AR einpassen.';
   const d = ptA && ptB && $('chk2').checked ? new THREE.Vector3().fromArray(ptA).distanceTo(new THREE.Vector3().fromArray(ptB)) : 0;
   if (d) $('pvHint').textContent += (picking ? ' ' : '') + 'Abstand A–B im Modell: ' + d.toFixed(3) + ' m';
   $('pickA').classList.toggle('on', picking === 'A'); $('pickB').classList.toggle('on', picking === 'B');
@@ -320,27 +324,27 @@ function pickAt(x, y) {
 
 // ---------- Ausrichtung ----------
 const YAX = new THREE.Vector3(0, 1, 0);
-const align = { a: null, b: null, adj: new THREE.Vector3(), yaw: 0, useScale: false, step: 0.01 };
-let arStage = 0;                               // 0: A setzen, 1: B setzen, 2: ausgerichtet
+const CEN = new THREE.Vector3(bcen.x, 0, bcen.z);          // Gebäudemitte auf EG-Niveau (Anker im Schnellstart)
+const align = { mode: 'free', a: null, b: null, adj: new THREE.Vector3(), yaw: 0, useScale: false, step: 0.01, info: '' };
+let stage = 'free';                                          // free | mA | mB | rA | rB | done
+let seq = [], seqIdx = 0, aimPt = null, needPlace = false;
 function applyAlignment() {
   if (!align.a) return;
-  const A = new THREE.Vector3().fromArray(ptA);
-  let theta = align.yaw, s = 1, info = '';
-  if (align.b && $('chk2').checked && ptB) {
+  const A = align.mode === 'free' ? CEN.clone() : new THREE.Vector3().fromArray(ptA);
+  let theta = align.yaw, s = 1; align.info = '';
+  if (align.mode === 'fix' && align.b && ptB) {
     const B = new THREE.Vector3().fromArray(ptB);
     const vm = new THREE.Vector2(B.x - A.x, B.z - A.z), vw = new THREE.Vector2(align.b.x - align.a.x, align.b.z - align.a.z);
     const psi = v => Math.atan2(-v.y, v.x);
     theta = psi(vw) - psi(vm) + align.yaw;
     const lm = B.distanceTo(A), lw = align.b.distanceTo(align.a);
     if (align.useScale) s = lw / lm;
-    const dev = (lw - lm * s) * 100;
-    info = 'Modell A–B ' + lm.toFixed(3) + ' m · vor Ort ' + lw.toFixed(3) + ' m · Δ ' + ((lw - lm) * 100).toFixed(1) + ' cm' + (align.useScale ? ' (Maßstab ' + s.toFixed(4) + ')' : '');
+    align.info = 'Modell A–B ' + lm.toFixed(3) + ' m · vor Ort ' + lw.toFixed(3) + ' m · Δ ' + ((lw - lm) * 100).toFixed(1) + ' cm' + (align.useScale ? ' (Maßstab ' + s.toFixed(4) + ')' : '');
   }
   model.rotation.set(0, theta, 0); model.scale.setScalar(s);
   const rot = A.clone().multiplyScalar(s).applyAxisAngle(YAX, theta);
   model.position.copy(align.a).sub(rot).add(align.adj);
   model.updateMatrixWorld(true); updateCutPlane();
-  align.info = info;
 }
 function resetModelTransform() { model.position.set(0, 0, 0); model.rotation.set(0, 0, 0); model.scale.setScalar(1); model.updateMatrixWorld(true); updateCutPlane(); }
 
@@ -349,6 +353,7 @@ let xrOK = false, inAR = false, xrSession = null, hitSource = null, hitPose = nu
 const reticle = new THREE.Mesh(new THREE.RingGeometry(0.035, 0.05, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true }));
 reticle.matrixAutoUpdate = false; reticle.visible = false; reticle.renderOrder = 10; scene.add(reticle);
 const dot = new THREE.Mesh(new THREE.SphereGeometry(0.008, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffb347, depthTest: false })); dot.renderOrder = 11; reticle.add(dot);
+const aimMark = new THREE.Mesh(new THREE.SphereGeometry(0.03, 14, 10), new THREE.MeshBasicMaterial({ color: 0x4cd68a, depthTest: false })); aimMark.renderOrder = 12; aimMark.visible = false; scene.add(aimMark);
 const fixA = mkMarker('A', 0xffb347), fixB = mkMarker('B', 0x4cd68a); fixA.visible = fixB.visible = false; scene.add(fixA, fixB);
 fixA.scale.setScalar(.5); fixB.scale.setScalar(.5);
 
@@ -357,31 +362,71 @@ fixA.scale.setScalar(.5); fixB.scale.setScalar(.5);
   refreshPoints();
 })();
 
+const TXT = {
+  free: ['Schnellstart 1:1', 'Das Modell steht im Maßstab 1:1 um dich herum. „Modell hierhin“ setzt es auf die anvisierte Fläche, mit den Pfeilen schiebst du es.'],
+  mA: ['Modellpunkt A', 'Fadenkreuz auf eine Ecke im Modell richten (grüner Punkt rastet ein), dann setzen.'],
+  mB: ['Modellpunkt B', 'Zweite Ecke im Modell anvisieren, möglichst weit von A entfernt.'],
+  rA: ['Punkt A am Bau', 'Fadenkreuz genau auf den echten Punkt A halten, dann setzen.'],
+  rB: ['Punkt B am Bau', 'Zum echten Punkt B gehen und anvisieren.']
+};
+const BTN = { mA: 'Modellpunkt A setzen', mB: 'Modellpunkt B setzen', rA: 'Punkt A am Bau setzen', rB: 'Punkt B am Bau setzen' };
 function arText() {
+  if (stage === 'done') {
+    $('stTitle').textContent = 'Eingepasst';
+    $('stText').innerHTML = (align.info || 'Ein Punkt: Richtung mit ↺/↻ einstellen.') + '<small>Feinjustage unten · Ebenen oben rechts</small>';
+  } else { $('stTitle').textContent = TXT[stage][0]; $('stText').textContent = TXT[stage][1]; $('btnSet').textContent = BTN[stage] || ''; }
+  const adj = stage === 'free' || stage === 'done';
+  $('arSet').classList.toggle('hide', adj); $('arAdj').classList.toggle('hide', !adj);
+  $('btnPlace').classList.toggle('hide', stage !== 'free'); $('lblScale').classList.toggle('hide', stage !== 'done');
+  $('btnRealign').textContent = stage === 'free' ? 'Exakt einpassen' : 'Neu einpassen';
+  document.body.classList.toggle('aiming', !adj);
+  $('btnSet').disabled = (stage === 'mA' || stage === 'mB') && !aimPt;
+  reticle.visible = (stage === 'rA' || stage === 'rB' || stage === 'free') && !!hitPose;
+  aimMark.visible = (stage === 'mA' || stage === 'mB') && !!aimPt;
+}
+function startFit(fresh) {
   const two = $('chk2').checked;
-  if (arStage === 0) { $('stTitle').textContent = 'Fixpunkt A'; $('stText').textContent = 'Fadenkreuz auf den Punkt A halten (Ecke im Raum), dann „setzen“. Der Ring zeigt die erkannte Fläche.'; $('btnSet').textContent = 'Fixpunkt A hier setzen'; }
-  else if (arStage === 1) { $('stTitle').textContent = 'Fixpunkt B'; $('stText').textContent = 'Zum zweiten Punkt B gehen und anvisieren.'; $('btnSet').textContent = 'Fixpunkt B hier setzen'; }
-  else { $('stTitle').textContent = 'Ausgerichtet'; $('stText').innerHTML = (align.info || (two ? '' : 'Ein Punkt: Richtung mit ↺/↻ einstellen.')) + '<small>Feinjustage unten · Ebenen oben rechts</small>'; }
-  $('arSet').classList.toggle('hide', arStage === 2);
-  $('arAdj').classList.toggle('hide', arStage !== 2);
-  document.body.classList.toggle('aiming', arStage < 2);
+  seq = fresh ? (two ? ['mA', 'mB', 'rA', 'rB'] : ['mA', 'rA']) : (two ? ['rA', 'rB'] : ['rA']);
+  seqIdx = 0; stage = seq[0];
+  if (fresh) { ptA = ptB = null; model.visible = true; } else model.visible = false;
+  align.a = align.b = null; fixA.visible = fixB.visible = false; refreshPoints(); arText();
+}
+function finishFit() {
+  align.mode = 'fix'; align.adj.set(0, 0, 0); align.yaw = 0; model.visible = true; stage = 'done';
+  applyAlignment(); refreshPoints(); arText();
 }
 function setPoint() {
-  if (!hitPose) { flash('Noch keine Fläche erkannt – Gerät langsam bewegen.'); return; }
-  const p = new THREE.Vector3().setFromMatrixPosition(hitPose);
-  const two = $('chk2').checked;
-  if (arStage === 0) {
-    align.a = p; fixA.position.copy(p); fixA.visible = true; align.b = null; align.adj.set(0, 0, 0); align.yaw = 0;
-    if (two) arStage = 1; else { arStage = 2; applyAlignment(); }
-  } else if (arStage === 1) {
-    if (p.distanceTo(align.a) < 0.3) { flash('Punkt B liegt zu nah an A.'); return; }
-    align.b = p; fixB.position.copy(p); fixB.visible = true; arStage = 2; applyAlignment();
+  if (stage === 'mA' || stage === 'mB') {
+    if (!aimPt) return;
+    const p = aimPt.toArray();
+    if (stage === 'mA') { ptA = p; store.set('A', p); } else {
+      if (ptA && aimPt.distanceTo(new THREE.Vector3().fromArray(ptA)) < 0.3) { flash('Punkt B liegt zu nah an A.'); return; }
+      ptB = p; store.set('B', p);
+    }
+    refreshPoints();
+  } else {
+    if (!hitPose) { flash('Noch keine Fläche erkannt – Gerät langsam bewegen.'); return; }
+    const p = new THREE.Vector3().setFromMatrixPosition(hitPose);
+    if (stage === 'rA') { align.a = p; fixA.position.copy(p); fixA.visible = true; }
+    else {
+      if (p.distanceTo(align.a) < 0.3) { flash('Punkt B liegt zu nah an A.'); return; }
+      align.b = p; fixB.position.copy(p); fixB.visible = true;
+    }
   }
-  model.visible = arStage === 2; arText();
+  seqIdx++;
+  if (seqIdx >= seq.length) finishFit(); else { stage = seq[seqIdx]; arText(); }
 }
 $('btnSet').onclick = setPoint;
-$('btnUndo').onclick = () => { if (arStage === 1) { arStage = 0; fixA.visible = false; align.a = null; } arText(); };
-$('btnRealign').onclick = () => { arStage = 0; align.a = align.b = null; fixA.visible = fixB.visible = false; model.visible = false; arText(); };
+$('btnUndo').onclick = () => {
+  if (seqIdx === 0) { stage = 'free'; align.mode = 'free'; align.a = align.a || new THREE.Vector3(); model.visible = true; applyAlignment(); }
+  else { seqIdx--; stage = seq[seqIdx]; }
+  arText();
+};
+$('btnRealign').onclick = () => { if (stage === 'free' || stage === 'done') startFit(true); };
+$('btnPlace').onclick = () => {
+  if (!hitPose) { flash('Noch keine Fläche erkannt.'); return; }
+  align.a = new THREE.Vector3().setFromMatrixPosition(hitPose); align.adj.set(0, 0, 0); applyAlignment();
+};
 $('btnExit').onclick = () => xrSession && xrSession.end();
 $('chkScale').onchange = e => { align.useScale = e.target.checked; applyAlignment(); arText(); };
 $('btnStep').onclick = () => { const s = [0.01, 0.05, 0.002]; align.step = s[(s.indexOf(align.step) + 1) % s.length]; $('btnStep').textContent = (align.step * 100).toString().replace('.', ',') + ' cm'; };
@@ -389,7 +434,7 @@ $('arAdj').addEventListener('click', e => {
   const k = e.target.dataset && e.target.dataset.n; if (!k) return;
   const cam = renderer.xr.getCamera(); const fw = new THREE.Vector3(); cam.getWorldDirection(fw); fw.y = 0;
   if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize(); const rt = new THREE.Vector3().crossVectors(fw, YAX);
-  const st = align.step, dyaw = (align.step >= 0.05 ? 1 : align.step <= 0.002 ? 0.1 : 0.3) * Math.PI / 180;
+  const st = stage === 'free' ? align.step * 5 : align.step, dyaw = (align.step >= 0.05 ? 1 : align.step <= 0.002 ? 0.1 : 0.3) * Math.PI / 180 * (stage === 'free' ? 5 : 1);
   if (k === 'fwd') align.adj.addScaledVector(fw, st); if (k === 'back') align.adj.addScaledVector(fw, -st);
   if (k === 'right') align.adj.addScaledVector(rt, st); if (k === 'left') align.adj.addScaledVector(rt, -st);
   if (k === 'up') align.adj.y += st; if (k === 'down') align.adj.y -= st;
@@ -399,7 +444,7 @@ $('arAdj').addEventListener('click', e => {
 let flashT = 0;
 function flash(t) { const m = $('msg'); m.textContent = t; m.classList.remove('hide'); clearTimeout(flashT); flashT = setTimeout(() => m.classList.add('hide'), 2200); }
 
-$('btnAR').onclick = async () => {
+async function startAR(quick) {
   if (xrSession) return;
   try {
     xrSession = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay', 'local-floor'], domOverlay: { root: $('ui') } });
@@ -409,27 +454,56 @@ $('btnAR').onclick = async () => {
   const viewer = await xrSession.requestReferenceSpace('viewer');
   hitSource = await xrSession.requestHitTestSource({ space: viewer });
   inAR = true; document.body.classList.add('ar'); scene.background = null;
-  resetModelTransform(); model.visible = false; markers.visible = false; align.a = align.b = null; align.adj.set(0, 0, 0); align.yaw = 0;
-  arStage = 0; arText();
+  resetModelTransform(); align.mode = 'free'; align.b = null; align.adj.set(0, 0, 0); align.yaw = 0; align.a = new THREE.Vector3();
+  model.visible = true; markers.visible = true; needPlace = true;     // Position folgt im ersten Frame (Standort des Nutzers)
+  if (quick) { stage = 'free'; arText(); } else { align.mode = 'fix'; startFit(false); }
   xrSession.addEventListener('end', () => {
-    inAR = false; xrSession = null; hitSource = null; hitPose = null; reticle.visible = false; fixA.visible = fixB.visible = false;
+    inAR = false; xrSession = null; hitSource = null; hitPose = null; reticle.visible = aimMark.visible = false; fixA.visible = fixB.visible = false;
     document.body.classList.remove('ar', 'aiming'); model.visible = true; markers.visible = true; resetModelTransform();
-    $('stTitle').textContent = 'Vorschau'; $('stText').textContent = ''; refreshPoints();
+    ptA = store.get('A', null); ptB = store.get('B', null); refreshPoints();
+    $('stTitle').textContent = 'Vorschau'; $('stText').textContent = '';
   });
-};
+}
+$('btnQuick').onclick = () => startAR(true);
+$('btnAR').onclick = () => startAR(false);
+
+function updateAim() {
+  aimPt = null;
+  if (stage !== 'mA' && stage !== 'mB') { aimMark.visible = false; return; }
+  const cam = renderer.xr.getCamera(), o = new THREE.Vector3(), d = new THREE.Vector3();
+  cam.getWorldPosition(o); cam.getWorldDirection(d); ray.set(o, d);
+  const hits = ray.intersectObjects(layers.filter(l => l.mesh.visible).map(l => l.mesh), false);
+  if (hits.length) {
+    const h = hits[0], pos = h.object.geometry.attributes.position, f = h.face; let best = null, bd = 1e9;
+    for (const i of [f.a, f.b, f.c]) {
+      const v = new THREE.Vector3().fromBufferAttribute(pos, i); const w = v.clone().applyMatrix4(h.object.matrixWorld), dd = w.distanceTo(h.point);
+      if (dd < bd) { bd = dd; best = v; }
+    }
+    aimPt = best; aimMark.position.copy(best.clone().applyMatrix4(model.matrixWorld));
+  }
+  aimMark.visible = !!aimPt;
+  const dis = !aimPt; if ($('btnSet').disabled !== dis) $('btnSet').disabled = dis;
+}
 
 // ---------- Loop ----------
 function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 renderer.setAnimationLoop((t, frame) => {
   if (!inAR) { applyOrbit(); }
-  else if (frame && hitSource) {
-    const res = frame.getHitTestResults(hitSource);
-    if (res.length) {
-      const pose = res[0].getPose(renderer.xr.getReferenceSpace());
-      hitPose = new THREE.Matrix4().fromArray(pose.transform.matrix);
-      reticle.matrix.copy(hitPose); reticle.visible = arStage < 2;
-    } else { hitPose = null; reticle.visible = false; }
+  else if (frame) {
+    if (needPlace) {                                         // Schnellstart: Modellmitte an den Standort des Nutzers
+      const c = renderer.xr.getCamera().position;
+      if (c.lengthSq() > 0) { align.a.set(c.x, 0, c.z); if (align.mode === 'free') applyAlignment(); needPlace = false; }
+    }
+    if (hitSource) {
+      const res = frame.getHitTestResults(hitSource);
+      if (res.length) {
+        const pose = res[0].getPose(renderer.xr.getReferenceSpace());
+        hitPose = new THREE.Matrix4().fromArray(pose.transform.matrix); reticle.matrix.copy(hitPose);
+        reticle.visible = stage === 'rA' || stage === 'rB' || stage === 'free';
+      } else { hitPose = null; reticle.visible = false; }
+    }
+    updateAim();
   }
   renderer.render(scene, camera);
 });
