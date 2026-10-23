@@ -140,7 +140,10 @@ angepasst werden (siehe 7).
     Strahl durch den Finger. DOM-Touch bleibt nur Ersatz. Auf Bedienelementen `beforexrselect` mit `preventDefault()` abfangen.
     Chrome meldet `selectstart` nur für den **ersten** Finger; weitere Finger stehen nur in `session.inputSources` (`targetRayMode === 'screen'`) –
     dort mitlesen. Zusätzlich gibt es Ein-Finger-Drehen (Umschalter), einen Dreh-Regler und „Fixieren“ (sperrt alle Änderungen).
-11. Reihenfolge der Dateien im Repo: `index.html` im Wurzelverzeichnis (Pages), `tools/` daneben.
+11. **Einmessen an entfernten Gebäudeecken:** Dort hat ARCore die Bodenfläche oft noch nicht erkannt, während der Boden vor den Füßen
+    sofort erkannt wird. Deshalb Hit-Test mit `entityTypes: ['plane', 'point']` und als Ersatz den Zielstrahl mit der Bodenebene schneiden
+    (Bodenhöhe aus Treffern unterhalb der Kamera mitgeführt, sonst `local-floor` y = 0). Geschätzte Treffer: oranger Ring, Hinweis beim Setzen.
+12. Reihenfolge der Dateien im Repo: `index.html` im Wurzelverzeichnis (Pages), `tools/` daneben.
 
 ## 7. Wenn das neue Modell nicht ins Schema passt
 

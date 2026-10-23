@@ -177,6 +177,14 @@ const near = (a, b, eps = 1e-3) => Math.abs(a - b) < eps;
       bindXrGestures(xrSession); setMenu(false); return { r1, r2, r3, r4, r5 };
     });
     ok(tap.r1 && !tap.r2 && tap.r3 && tap.r4 === tap.r3 && tap.r5, 'Tipp ins Freie: Menü aus → ein (Touch und WebXR), Ziehen schaltet nicht, offenes Ebenen-Menü wird zuerst geschlossen ' + JSON.stringify(tap));
+    // Bodenschätzung, wenn ARCore an der Zielstelle (z. B. Gebäudeecke) noch keine Fläche erkannt hat
+    const fl = await p.evaluate(() => {
+      const c = new THREE.Vector3(0, 1.6, 0), d = new THREE.Vector3(0, -1, -2).normalize();
+      const q = estimateFloorPoint(c, d, 0), up = estimateFloorPoint(c, new THREE.Vector3(0, 0.2, -1).normalize(), 0);
+      return { q: q && q.toArray().map(v => +v.toFixed(3)), up, floorY, hitEst };
+    });
+    ok(fl.q && Math.abs(fl.q[1]) < 1e-6 && Math.abs(fl.q[2] + 3.2) < 1e-3 && fl.up === null, 'Bodenschätzung: Zielstrahl trifft die Bodenebene 3,2 m vor dem Gerät; Blick nach oben ergibt keinen Punkt ' + JSON.stringify(fl.q));
+    ok(fl.floorY !== null && Math.abs(fl.floorY) < 0.01 && fl.hitEst === false, 'Bodenhöhe wird aus echten Treffern mitgeführt (y = ' + (fl.floorY === null ? '–' : fl.floorY.toFixed(3)) + '), echter Treffer gilt nicht als geschätzt');
     // Mehrfach starten/beenden: genau EIN Hilfskontext, Zeichenkontext bleibt intakt, Preview zeichnet wieder
     const multi = [];
     for (let i = 0; i < 4; i++) {

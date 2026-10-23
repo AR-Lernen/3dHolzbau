@@ -48,7 +48,7 @@
   body.menuOff #bottom, body.menuOff #layPanel, body.menuOff #stText, body.menuOff #planMini { display:none !important; }
   body.ar .previewOnly { display:none !important; }
   body:not(.ar) .arOnly { display:none !important; }
-  #msg { position:absolute; left:50%; top:45%; transform:translate(-50%,-50%); text-align:center; max-width:80%; pointer-events:none; }
+  #msg { position:absolute; left:50%; top:30%; transform:translate(-50%,-50%); text-align:center; max-width:80%; pointer-events:none; }
   #cross { position:absolute; left:50%; top:50%; width:34px; height:34px; margin:-17px 0 0 -17px; pointer-events:none; opacity:.9; display:none; }
   body.ar.aiming #cross { display:block; }
   #cross:before,#cross:after { content:""; position:absolute; background:#fff; box-shadow:0 0 3px #000; }
@@ -525,6 +525,12 @@ function applyAlignment() {
 function resetModelTransform() { model.position.set(0, 0, 0); model.rotation.set(0, 0, 0); model.scale.setScalar(1); model.updateMatrixWorld(true); updateCutPlane(); }
 
 // ---------- AR ----------
+let floorY = null, hitEst = false;                         // Bodenhöhe (Welt) und ob der aktuelle Treffer geschätzt ist
+// Strahl von der Kamera bis zur waagerechten Bodenebene (local-floor: y = 0 ist ARCores Bodenschätzung)
+function estimateFloorPoint(c, dir, fy) {
+  if (dir.y > -0.05) return null;                            // Blick fast waagerecht oder nach oben: kein sinnvoller Bodenpunkt
+  const s = (fy - c.y) / dir.y; return s > 0.2 && s < 30 ? c.clone().addScaledVector(dir, s) : null;
+}
 let xrOK = false, inAR = false, xrSession = null, hitSource = null, hitPose = null;
 const reticle = new THREE.Mesh(new THREE.RingGeometry(0.05, 0.07, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, side: THREE.DoubleSide }));
 reticle.matrixAutoUpdate = false; reticle.frustumCulled = false; reticle.visible = false; reticle.renderOrder = 10; scene.add(reticle);
@@ -605,6 +611,7 @@ function setPoint() {
   } else {
     if (!hitPose) { flash('Noch keine Fläche erkannt – Gerät langsam bewegen.'); return; }
     const p = new THREE.Vector3().setFromMatrixPosition(hitPose);
+    if (hitEst) flash('Punkt auf geschätzter Bodenhöhe gesetzt – Höhe danach ggf. mit „Höhe ▲▼“ anpassen.');
     if (stage === 'rA') { align.a = p; fixA.position.copy(p); fixA.visible = true; }
     else {
       if (p.distanceTo(align.a) < 0.3) { flash('Punkt B liegt zu nah an A.'); return; }
@@ -703,7 +710,10 @@ async function startAR(quick, table) {
   }
   bindXrGestures(xrSession); tp.clear();
   const viewer = await xrSession.requestReferenceSpace('viewer');
-  hitSource = await xrSession.requestHitTestSource({ space: viewer });
+  // Auch einzelne Merkmalspunkte zulassen (z. B. an Wandkanten), nicht nur fertig erkannte Flächen
+  try { hitSource = await xrSession.requestHitTestSource({ space: viewer, entityTypes: ['plane', 'point'] }); }
+  catch (e) { hitSource = await xrSession.requestHitTestSource({ space: viewer }); }
+  floorY = null; hitEst = false;
   inAR = true; document.body.classList.add('ar'); scene.background = null;
   bs = 1; resetModelTransform(); align.mode = 'free'; align.b = null; align.adj.set(0, 0, 0); align.yaw = 0; align.a = new THREE.Vector3();
   model.visible = true; markers.visible = true; needPlace = true;     // Position folgt im ersten Frame (Standort des Nutzers)
@@ -725,12 +735,15 @@ function arTick(t, frame) {
     if (c.lengthSq() > 0) { align.a.set(c.x, 0, c.z); if (align.mode === 'free') applyAlignment(); needPlace = false; }
   }
   if (hitSource) {
-    const res = frame.getHitTestResults(hitSource);
-    if (res.length) {
-      const pose = res[0].getPose(refSpace());
-      if (!pose) { hitPose = null; reticle.visible = false; return; }
-      const mm = pose.transform.matrix;                          // Spalte 4 = Position
-      hitPose = new THREE.Matrix4().makeTranslation(mm[12], mm[13], mm[14]); reticle.matrix.copy(hitPose); reticle.matrixWorld.copy(hitPose); reticle.matrixWorldNeedsUpdate = true;
+    const res = frame.getHitTestResults(hitSource), cam = getCam(), c = new THREE.Vector3(), dir = new THREE.Vector3();
+    cam.getWorldPosition(c); cam.getWorldDirection(dir);
+    let p = null; hitEst = false;
+    if (res.length) { const pose = res[0].getPose(refSpace()); if (pose) { const mm = pose.transform.matrix; p = new THREE.Vector3(mm[12], mm[13], mm[14]); } }
+    if (p && p.y < c.y - 0.6) floorY = floorY == null ? p.y : floorY * 0.9 + p.y * 0.1;     // Bodenhöhe aus Treffern mitführen
+    if (!p) { p = estimateFloorPoint(c, dir, floorY == null ? 0 : floorY); hitEst = !!p; }  // Ersatz: Zielstrahl bis zur Bodenhöhe
+    if (p) {
+      hitPose = new THREE.Matrix4().makeTranslation(p.x, p.y, p.z); reticle.matrix.copy(hitPose); reticle.matrixWorld.copy(hitPose); reticle.matrixWorldNeedsUpdate = true;
+      reticle.material.color.set(hitEst ? 0xffb347 : 0xffffff); disc.material.color.set(hitEst ? 0xffb347 : 0xffffff);
       reticle.visible = stage === 'rA' || stage === 'rB' || (stage === 'free' && aimOn);
     } else { hitPose = null; reticle.visible = false; }
   }
@@ -743,7 +756,7 @@ function arTick(t, frame) {
     const ang = Math.round(Math.atan2(v.dot(rt), v.dot(fw)) * 180 / Math.PI), dist = v.length();
     const where = dist < 5 ? 'du bist im Gebäude' : (Math.abs(ang) < 20 ? 'geradeaus' : (ang > 0 ? ang + '° rechts' : -ang + '° links') + (Math.abs(ang) > 120 ? ' (hinter dir)' : ''));
     const gl3 = renderer.getContext(), tech = (ovl ? 'Overlay' : 'XR') + ' · Pose ' + (ovl ? (ovlStat.poses ? 'ok' : 'FEHLT') : 'n/a') + ' · Draws ' + renderer.info.render.calls + ' · Canvas ' + gl3.drawingBufferWidth + '×' + gl3.drawingBufferHeight + (gl3.isContextLost() ? ' · GL VERLOREN' : '');
-    $('diag').textContent = DEBUG ? 'v24 ' + tech + ' · Fläche: ' + (hitPose ? 'erkannt' : 'KEINE') + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? 'erkannt' : 'keine erkannt – Handy langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
+    $('diag').textContent = DEBUG ? 'v25 ' + tech + ' · Fläche: ' + (hitPose ? (hitEst ? 'geschätzt' : 'erkannt') : 'KEINE') + ' · Boden y=' + (floorY == null ? '–' : floorY.toFixed(2)) + ' · Mitte: ' + dist.toFixed(1) + ' m, ' + where + (errs.length ? ' · FEHLER ' + errs.slice(-2).join('|') : '') : 'Fläche: ' + (hitPose ? (hitEst ? 'Boden geschätzt (Ring orange)' : 'erkannt') : 'keine – Handy zum Boden neigen und langsam bewegen') + (aimOn || stage === 'rA' || stage === 'rB' ? ' · Ring: ' + (reticle.visible ? 'an' : 'aus') : '') + (/FEHLT|VERLOREN|Draws 0 /.test(tech + ' ') ? ' · ' + tech : '') + (errs.length ? ' · Fehler: ' + errs.slice(-1)[0] : '');
   }
 }
 // ---------- Gesten: 1 Finger verschieben, 2 Finger drehen (nur freier Modus) ----------
@@ -869,7 +882,7 @@ renderer.setAnimationLoop((t, frame) => {
 });
 refreshPoints();
 $('stText').textContent = 'Modell drehen: 1 Finger · zoomen/verschieben: 2 Finger';
-$('diag').textContent = 'Version 24'; $('chkOvl').checked = store.get('ovl', true);
+$('diag').textContent = 'Version 25'; $('chkOvl').checked = store.get('ovl', true);
 </script>
 </body>
 </html>

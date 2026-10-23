@@ -57,6 +57,10 @@ Der Holzbau wird am Bestand ausgerichtet. Dazu misst du zwei Außenecken des Alt
 4. Die App sagt dir, wohin du zielen sollst, z. B. *„Punkt A · Anbauwand: Ecke Seitenwand links / Anbauwand – Außenecke am Boden (Wandfuß)“*.
    Eine kleine Karte oben zeigt A und B. **Von außen auf die Wand gesehen ist A die linke, B die rechte Ecke.**
 5. Fadenkreuz und Ring genau auf die **Außenecke am Boden** richten → **„Punkt A am Bau setzen“**. Dann zur zweiten Ecke gehen → **„Punkt B am Bau setzen“**.
+   - **Weißer Ring:** ARCore hat dort eine Fläche oder einen Punkt erkannt.
+   - **Oranger Ring:** Dort ist noch nichts erkannt; die App verlängert den Zielstrahl bis zur bekannten Bodenhöhe („Boden geschätzt“).
+     Das funktioniert auf ebenem Gelände gut. Am genauesten wird es, wenn du vorher kurz den Boden um dich herum abfährst und
+     die Ecke aus 2–4 m Entfernung schräg von oben anvisierst. Bei Gefälle die Höhe danach mit **„Höhe ▲▼“** korrigieren.
 6. Das Modell sitzt. Oben stehen *„Modell A–B … m · vor Ort … m · Δ … cm“*: Δ ist die Abweichung zwischen Modell- und gemessenem Abstand.
    Klein (wenige cm) = gut. Groß = Ecken nicht genau getroffen oder Tracking ungenau → **„Neu einpassen“**.
 7. Feinjustage mit Pfeilen, Höhe und Drehen. Der Haken **„Maßstab aus Punkten“** passt die Größe an den gemessenen Abstand an (nur wenn du dem Messwert vertraust).
@@ -87,7 +91,8 @@ Nach dem *Exakt einpassen* sind die Gesten gesperrt, damit das eingemessene Mode
 |---|---|
 | Seite zeigt alte Version | Link mit neuer Zahl `?v=…` öffnen; Chrome-Cache leeren |
 | „AR starten“ grau | Chrome? ARCore („Google Play-Dienste für AR“) installiert? Seite per **https** geöffnet? |
-| Kein Ring / „Fläche: keine“ | Mehr Licht, Handy langsam hin und her bewegen, strukturierte Fläche (nicht glatt/einfarbig) anvisieren |
+| Kein Ring / „Fläche: keine“ | Handy zum Boden neigen (bei waagerechtem Blick gibt es keinen Bodenpunkt), mehr Licht, langsam hin und her bewegen |
+| Oranger Ring („Boden geschätzt“) | Normal an Stellen, die ARCore noch nicht erfasst hat; Punkt kann gesetzt werden. Für mehr Genauigkeit den Boden vorher kurz abfahren |
 | Modell wandert / driftet | Neu einpassen; nah an den Referenzpunkten bleiben; Tracking in hellen Räumen besser |
 | Modell nicht sichtbar | „Modell vor mich setzen“; Blick vom Boden heben; Deckkraft erhöhen |
 | Kamerabild, aber kein Modell | *Kompatibilitätsmodus* (Haken in der Vorschau) einschalten |
